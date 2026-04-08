@@ -224,6 +224,16 @@ admin: {
 - **Next.js** 14 or 15
 - **React** 18 or 19
 
+## Roadmap
+
+- Live preview while editing colors (real-time CSS injection in form)
+- Export / import theme configuration as JSON
+- Custom font selection (Google Fonts integration)
+- Per-user theme preferences (dark/light override)
+- Color contrast checker (WCAG AA/AAA validation)
+- Additional presets (10+ themes)
+- Custom CSS syntax highlighting in admin editor
+
 ## ☕ Support
 
 If this plugin saves you time, consider buying me a coffee!

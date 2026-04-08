@@ -25,14 +25,7 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
           : ''
       : ''
 
-  const handleTextChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      setValue(e.target.value)
-    },
-    [setValue],
-  )
-
-  const handleColorChange = useCallback(
+  const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       setValue(e.target.value)
     },
@@ -50,7 +43,7 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
         <input
           type="text"
           value={value || ''}
-          onChange={handleTextChange}
+          onChange={handleChange}
           placeholder="#000000"
           style={{
             width: '100%',
@@ -66,7 +59,7 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
         <input
           type="color"
           value={value || '#000000'}
-          onChange={handleColorChange}
+          onChange={handleChange}
           style={{
             position: 'absolute',
             right: 8,
