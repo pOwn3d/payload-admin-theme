@@ -1,17 +1,44 @@
 # @consilioweb/payload-admin-theme
 
+<p align="center">
+  <a href="https://buymeacoffee.com/pown3d">
+    <img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-☕-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black" alt="Buy me a coffee" />
+  </a>
+</p>
+
+> [!IMPORTANT]
+> ## ⚠️ Next.js 16 + Turbopack — Known Issue
+>
+> If you're using **Next.js 16** with Turbopack (default bundler), you may encounter a `createContext is not a function` error during `next build`. This is a **known Payload CMS issue** ([#15429](https://github.com/payloadcms/payload/issues/15429), [#14330](https://github.com/payloadcms/payload/discussions/14330)) — not specific to this plugin.
+>
+> **Workaround** — Add this to your admin page (`src/app/(payload)/admin/[[...segments]]/page.tsx`):
+> ```ts
+> export const dynamic = 'force-dynamic'
+> ```
+>
+> And ensure all `@consilioweb/*` packages are in `transpilePackages` in your `next.config.ts`:
+> ```ts
+> transpilePackages: ['@consilioweb/seo-analyzer', '@consilioweb/admin-nav', /* ...other @consilioweb packages */],
+> ```
+>
+> ✅ **Next.js 15** works without any workaround.
+
 Payload CMS 3 plugin to customize the admin panel appearance: colors, branding, logo, login page, and custom CSS — all configurable from the admin UI.
 
 ## Features
 
 - **Color theming** with built-in color picker fields
+- **Dark mode** — dedicated color fields for `[data-theme="dark"]` (v0.2.0)
+- **4 theme presets** — Blue Professional, Dark Minimal, Green Nature, Purple Creative (v0.2.0)
 - **Brand customization** — name, logo, favicon
 - **Login page** — custom title, subtitle, and logo
 - **CSS variable injection** — overrides Payload's default theme
-- **Custom CSS** — inject additional styles from the admin panel
+- **Custom CSS** — inject additional styles from the admin panel (with injection validation)
 - **Hide Payload branding** — remove default Payload logo
 - **Nav link** — automatic "Admin Theme" link in the sidebar
 - **Server-side rendering** — no client-side flicker
+- **AdminThemeContext** — single fetch shared across all components (v0.2.0)
+- **Security** — CSS injection validation, hex color validation, URL validation on logo/favicon (v0.2.0)
 
 ## Installation
 
@@ -58,6 +85,31 @@ That's it! The plugin adds an **"Admin Theme"** global to your admin panel where
 | `navLinkPath` | `string` | (built-in) | Override nav link component path |
 | `skipComponentInjection` | `boolean` | `false` | Skip automatic component injection |
 | `colorPickerComponent` | `string \| false` | (built-in) | Override or disable color picker |
+| `access` | `function` | Admin-only | Custom access control function for the global |
+| `presets` | `boolean` | `true` | Enable the 4 built-in theme presets |
+
+### Dark Mode (v0.2.0)
+
+The plugin supports dedicated dark mode colors. In the admin UI, a **Dark Mode** section lets you configure separate colors for `[data-theme="dark"]`:
+
+```typescript
+adminThemePlugin({
+  primaryColor: '#3B82F6',      // Light mode primary
+  accentColor: '#10B981',       // Light mode accent
+  // Dark mode colors are configured from the admin UI
+})
+```
+
+### Theme Presets (v0.2.0)
+
+4 built-in presets can be applied with one click from the admin panel:
+
+| Preset | Primary | Accent | Style |
+|--------|---------|--------|-------|
+| Blue Professional | `#3B82F6` | `#10B981` | Clean corporate |
+| Dark Minimal | `#6366F1` | `#F59E0B` | Dark background |
+| Green Nature | `#059669` | `#D97706` | Organic feel |
+| Purple Creative | `#7C3AED` | `#EC4899` | Bold creative |
 
 ## Admin UI Configuration
 
@@ -171,6 +223,14 @@ admin: {
 - **Payload CMS** 3.0+
 - **Next.js** 14 or 15
 - **React** 18 or 19
+
+## ☕ Support
+
+If this plugin saves you time, consider buying me a coffee!
+
+<a href="https://buymeacoffee.com/pown3d">
+  <img src="https://img.buymeacoffee.com/button-api/?text=Buy me a coffee&emoji=☕&slug=pown3d&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" />
+</a>
 
 ## License
 

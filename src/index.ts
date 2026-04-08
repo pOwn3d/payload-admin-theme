@@ -2,7 +2,8 @@
 export { adminThemePlugin } from './plugin.js'
 export { createAdminThemeGlobal } from './globals/AdminTheme.js'
 export { generateCSSVariables } from './utils/cssVariables.js'
+export { getPresetColors } from './utils/presets.js'
 
 // Types
-export type { AdminThemePluginConfig } from './types.js'
+export type { AdminThemePluginConfig, AdminThemeData, ThemePreset, DarkModeColors } from './types.js'
 export type { ThemeValues } from './utils/cssVariables.js'

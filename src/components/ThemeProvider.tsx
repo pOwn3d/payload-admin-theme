@@ -1,83 +1,87 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
+import { lighten, darken } from '../utils/colorUtils.js'
+import { getPresetColors } from '../utils/presets.js'
+import { fetchTheme } from '../utils/themeCache.js'
+import type { AdminThemeData } from '../types.js'
 
-interface AdminThemeData {
-  primaryColor?: string | null
-  accentColor?: string | null
-  sidebarColor?: string | null
-  borderRadius?: number | null
-  customCSS?: string | null
-  hidePayloadBranding?: boolean | null
-  brandName?: string | null
-  logoUrl?: string | null
-  faviconUrl?: string | null
+/**
+ * Build CSS variable declarations from a set of theme colors.
+ * Shared between light and dark mode generation.
+ */
+function buildColorVars(
+  primaryColor?: string | null,
+  accentColor?: string | null,
+  sidebarColor?: string | null,
+): string[] {
+  const vars: string[] = []
+
+  if (primaryColor) {
+    vars.push(`--theme-success-500: ${primaryColor}`)
+    vars.push(`--theme-text-link: ${primaryColor}`)
+    vars.push(`--theme-success-400: ${lighten(primaryColor, 0.15)}`)
+    vars.push(`--theme-success-600: ${darken(primaryColor, 0.15)}`)
+  }
+
+  if (accentColor) {
+    vars.push(`--theme-warning-500: ${accentColor}`)
+    vars.push(`--theme-warning-400: ${lighten(accentColor, 0.15)}`)
+    vars.push(`--theme-warning-600: ${darken(accentColor, 0.15)}`)
+  }
+
+  if (sidebarColor) {
+    vars.push(`--nav-color: ${sidebarColor}`)
+  }
+
+  return vars
 }
 
 /**
- * Convert a hex color to RGB components
+ * Resolve effective colors: preset overrides individual fields when not 'custom'.
  */
-function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
-  const clean = hex.replace('#', '')
-  if (clean.length !== 6 && clean.length !== 3) return null
-
-  const full =
-    clean.length === 3
-      ? clean
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : clean
-
-  const num = parseInt(full, 16)
+function resolveColors(theme: AdminThemeData) {
+  const presetColors = getPresetColors(theme.preset)
+  if (presetColors) {
+    return {
+      primaryColor: presetColors.primaryColor,
+      accentColor: presetColors.accentColor,
+      sidebarColor: presetColors.sidebarColor,
+    }
+  }
   return {
-    r: (num >> 16) & 255,
-    g: (num >> 8) & 255,
-    b: num & 255,
+    primaryColor: theme.primaryColor,
+    accentColor: theme.accentColor,
+    sidebarColor: theme.sidebarColor,
   }
 }
 
-function lighten(hex: string, amount: number): string {
-  const rgb = hexToRgb(hex)
-  if (!rgb) return hex
-  const r = Math.min(255, Math.round(rgb.r + (255 - rgb.r) * amount))
-  const g = Math.min(255, Math.round(rgb.g + (255 - rgb.g) * amount))
-  const b = Math.min(255, Math.round(rgb.b + (255 - rgb.b) * amount))
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
-}
-
-function darken(hex: string, amount: number): string {
-  const rgb = hexToRgb(hex)
-  if (!rgb) return hex
-  const r = Math.max(0, Math.round(rgb.r * (1 - amount)))
-  const g = Math.max(0, Math.round(rgb.g * (1 - amount)))
-  const b = Math.max(0, Math.round(rgb.b * (1 - amount)))
-  return `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`
-}
-
 /**
- * ThemeInjector — fetches admin theme settings and injects CSS variables
- * into the Payload admin panel. Renders as an invisible component (no wrapping).
+ * ThemeInjectorClient — self-contained client component.
+ * Fetches theme data via module-level cache (no React Context / createContext)
+ * and injects CSS variables into the Payload admin panel.
+ *
+ * Supports:
+ * - Theme presets (override individual color fields)
+ * - Dark mode color overrides via [data-theme="dark"] selector
+ * - Custom CSS injection
+ * - Favicon and brand name customization
  */
 export const ThemeInjectorClient: React.FC = () => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    const fetchTheme = async () => {
-      try {
-        const res = await fetch('/api/globals/admin-theme', {
-          credentials: 'include',
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setTheme(data)
-        }
-      } catch {
-        // Silently fail — use defaults
-      }
+    // Read globalSlug from the RSC-injected data attribute
+    let slug = 'admin-theme'
+    const el = document.querySelector('[data-admin-theme-slug]')
+    if (el) {
+      const s = el.getAttribute('data-admin-theme-slug')
+      if (s) slug = s
     }
 
-    fetchTheme()
+    fetchTheme(slug).then((data) => {
+      if (data) setTheme(data)
+    })
   }, [])
 
   useEffect(() => {
@@ -92,37 +96,31 @@ export const ThemeInjectorClient: React.FC = () => {
       document.head.appendChild(styleEl)
     }
 
-    // Build CSS variables
-    const vars: string[] = []
+    // Resolve colors (preset takes priority over individual fields)
+    const { primaryColor, accentColor, sidebarColor } = resolveColors(theme)
 
-    if (theme.primaryColor) {
-      const primary = theme.primaryColor
-      vars.push(`--theme-success-500: ${primary}`)
-      vars.push(`--theme-text-link: ${primary}`)
-      vars.push(`--theme-success-400: ${lighten(primary, 0.15)}`)
-      vars.push(`--theme-success-600: ${darken(primary, 0.15)}`)
-    }
-
-    if (theme.accentColor) {
-      vars.push(`--theme-warning-500: ${theme.accentColor}`)
-      vars.push(`--theme-warning-400: ${lighten(theme.accentColor, 0.15)}`)
-      vars.push(`--theme-warning-600: ${darken(theme.accentColor, 0.15)}`)
-    }
-
-    if (theme.sidebarColor) {
-      vars.push(`--nav-color: ${theme.sidebarColor}`)
-    }
+    // Build light mode variables
+    const lightVars = buildColorVars(primaryColor, accentColor, sidebarColor)
 
     if (theme.borderRadius != null) {
-      vars.push(`--style-radius-s: ${theme.borderRadius}px`)
-      vars.push(`--style-radius-m: ${theme.borderRadius + 2}px`)
-      vars.push(`--style-radius-l: ${theme.borderRadius + 4}px`)
+      lightVars.push(`--style-radius-s: ${theme.borderRadius}px`)
+      lightVars.push(`--style-radius-m: ${theme.borderRadius + 2}px`)
+      lightVars.push(`--style-radius-l: ${theme.borderRadius + 4}px`)
     }
 
     let css = ''
 
-    if (vars.length > 0) {
-      css += `:root {\n  ${vars.join(';\n  ')};\n}\n`
+    if (lightVars.length > 0) {
+      css += `:root {\n  ${lightVars.join(';\n  ')};\n}\n`
+    }
+
+    // Build dark mode overrides if any dark colors are set
+    const dark = theme.darkMode
+    if (dark && (dark.primaryColor || dark.accentColor || dark.sidebarColor)) {
+      const darkVars = buildColorVars(dark.primaryColor, dark.accentColor, dark.sidebarColor)
+      if (darkVars.length > 0) {
+        css += `\n[data-theme="dark"] {\n  ${darkVars.join(';\n  ')};\n}\n`
+      }
     }
 
     // Inject custom CSS from the global

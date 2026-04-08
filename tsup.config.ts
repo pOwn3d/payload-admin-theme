@@ -64,23 +64,30 @@ export default defineConfig([
       'src/components/ThemeProvider.tsx',
       'src/components/AdminBranding.tsx',
       'src/components/ColorPickerField.tsx',
+      'src/utils/colorUtils.ts',
+      'src/utils/presets.ts',
+      'src/utils/themeCache.ts',
     ],
     onSuccess: async () => {
-      // Prepend "use client" to component files that need it
-      const { readFileSync, writeFileSync } = await import('fs')
-      const clientFiles = [
-        'dist/client.js',
-        'dist/components/ThemeProvider.js',
-        'dist/components/AdminBranding.js',
-        'dist/components/ColorPickerField.js',
-      ]
-      for (const file of clientFiles) {
-        const content = readFileSync(file, 'utf-8')
-        if (!content.startsWith('"use client"')) {
-          writeFileSync(file, `"use client";\n${content}`)
+      // Prepend "use client" to individual component files (NOT the barrel client.js)
+      // This is required for Next.js 16 Turbopack compatibility
+      const { readdirSync, readFileSync, writeFileSync, statSync } = await import('fs')
+      const { join } = await import('path')
+
+      function addUseClient(dir: string) {
+        for (const file of readdirSync(dir)) {
+          const path = join(dir, file)
+          if (statSync(path).isDirectory()) { addUseClient(path); continue }
+          if (!file.endsWith('.js')) continue
+          const content = readFileSync(path, 'utf-8')
+          if (!content.startsWith('"use client"')) {
+            writeFileSync(path, '"use client";\n' + content)
+          }
         }
       }
-      console.log('Prepended "use client" to client component files')
+      addUseClient('dist/components')
+      addUseClient('dist/utils')
+      console.log('Prepended "use client" to individual component/util files (not barrel)')
     },
   },
 ])

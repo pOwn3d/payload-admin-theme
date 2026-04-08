@@ -63,9 +63,51 @@ export interface AdminThemePluginConfig {
   colorPickerComponent?: string | false
 
   /**
+   * Custom access control for the AdminTheme global.
+   * Allows overriding the default update access (admin role only).
+   */
+  access?: {
+    read?: (args: { req: any }) => boolean | Promise<boolean>
+    update?: (args: { req: any }) => boolean | Promise<boolean>
+  }
+
+  /**
    * Override the ThemeNavLink component path.
    * Required for symlinked/local development (link: in package.json).
    * Default: '@consilioweb/payload-admin-theme/rsc#ThemeNavLink'
    */
   navLinkPath?: string
+}
+
+/** Available theme presets */
+export type ThemePreset =
+  | 'custom'
+  | 'blue-professional'
+  | 'dark-minimal'
+  | 'green-nature'
+  | 'purple-creative'
+
+/** Dark mode color overrides */
+export interface DarkModeColors {
+  primaryColor?: string | null
+  accentColor?: string | null
+  sidebarColor?: string | null
+}
+
+/** Theme data returned by the AdminTheme global */
+export interface AdminThemeData {
+  preset?: ThemePreset | null
+  primaryColor?: string | null
+  accentColor?: string | null
+  sidebarColor?: string | null
+  borderRadius?: number | null
+  customCSS?: string | null
+  hidePayloadBranding?: boolean | null
+  brandName?: string | null
+  logoUrl?: string | null
+  faviconUrl?: string | null
+  loginTitle?: string | null
+  loginSubtitle?: string | null
+  loginLogoUrl?: string | null
+  darkMode?: DarkModeColors | null
 }

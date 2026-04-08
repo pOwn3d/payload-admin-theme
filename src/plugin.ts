@@ -28,9 +28,11 @@ export const adminThemePlugin =
       createAdminThemeGlobal(pluginConfig),
     ]
 
-    // 2. Ensure admin.components exists
-    if (!config.admin) config.admin = {}
-    if (!config.admin.components) config.admin.components = {}
+    // 2. Deep clone admin and admin.components to avoid mutating incoming config
+    config.admin = { ...config.admin }
+    config.admin.components = { ...config.admin.components }
+
+    const globalSlug = pluginConfig.globalSlug ?? 'admin-theme'
 
     // 3. Inject ThemeInjector via afterNavLinks (renders on all admin pages)
     // Skip when using symlinked packages in dev (webpack RSC module bug)
@@ -38,13 +40,21 @@ export const adminThemePlugin =
       const themeInjectorPath =
         pluginConfig.themeInjectorPath ??
         '@consilioweb/payload-admin-theme/rsc#ThemeInjector'
+
+      // Pass globalSlug as a client prop so the provider fetches the right global
+      const themeInjectorComponent = {
+        path: themeInjectorPath,
+        clientProps: { globalSlug },
+      }
+
       const existingNavLinks = config.admin.components.afterNavLinks || []
       config.admin.components.afterNavLinks = [
-        themeInjectorPath,
+        themeInjectorComponent,
         ...(Array.isArray(existingNavLinks) ? existingNavLinks : [existingNavLinks]),
       ]
 
       // Inject custom branding components (Logo + Icon) if faviconUrl is set
+      // These components fetch theme data via module-level cache (themeCache.ts)
       if (pluginConfig.faviconUrl) {
         if (!config.admin.components.graphics) {
           config.admin.components.graphics = {}

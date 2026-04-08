@@ -1,40 +1,27 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-
-interface BrandingData {
-  logoUrl?: string | null
-  brandName?: string | null
-}
+import React, { useEffect, useState } from 'react'
+import { fetchTheme } from '../utils/themeCache.js'
+import type { AdminThemeData } from '../types.js'
 
 /**
  * AdminBranding — replaces the default Payload logo/icon
  * with the configured custom branding.
+ *
+ * Fetches theme data via module-level cache (no React Context / createContext).
  */
 export const AdminBranding: React.FC = () => {
-  const [branding, setBranding] = useState<BrandingData | null>(null)
+  const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    const fetchBranding = async () => {
-      try {
-        const res = await fetch('/api/globals/admin-theme', {
-          credentials: 'include',
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setBranding(data)
-        }
-      } catch {
-        // Silently fail
-      }
-    }
-
-    fetchBranding()
+    fetchTheme('admin-theme').then((data) => {
+      if (data) setTheme(data)
+    })
   }, [])
 
-  if (!branding?.logoUrl) {
+  if (!theme?.logoUrl) {
     // Render brand name as text fallback
-    if (branding?.brandName) {
+    if (theme?.brandName) {
       return (
         <span
           style={{
@@ -43,7 +30,7 @@ export const AdminBranding: React.FC = () => {
             whiteSpace: 'nowrap',
           }}
         >
-          {branding.brandName}
+          {theme.brandName}
         </span>
       )
     }
@@ -52,8 +39,8 @@ export const AdminBranding: React.FC = () => {
 
   return (
     <img
-      src={branding.logoUrl}
-      alt={branding.brandName || 'Admin Logo'}
+      src={theme.logoUrl}
+      alt={theme.brandName || 'Admin Logo'}
       style={{
         maxHeight: '28px',
         width: 'auto',
@@ -64,35 +51,25 @@ export const AdminBranding: React.FC = () => {
 }
 
 /**
- * AdminIcon — smaller version for nav/tab icon usage
+ * AdminIcon — smaller version for nav/tab icon usage.
+ *
+ * Fetches theme data via module-level cache (no React Context / createContext).
  */
 export const AdminIcon: React.FC = () => {
-  const [branding, setBranding] = useState<BrandingData | null>(null)
+  const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    const fetchBranding = async () => {
-      try {
-        const res = await fetch('/api/globals/admin-theme', {
-          credentials: 'include',
-        })
-        if (res.ok) {
-          const data = await res.json()
-          setBranding(data)
-        }
-      } catch {
-        // Silently fail
-      }
-    }
-
-    fetchBranding()
+    fetchTheme('admin-theme').then((data) => {
+      if (data) setTheme(data)
+    })
   }, [])
 
-  if (!branding?.logoUrl) return null
+  if (!theme?.logoUrl) return null
 
   return (
     <img
-      src={branding.logoUrl}
-      alt={branding.brandName || 'Icon'}
+      src={theme.logoUrl}
+      alt={theme.brandName || 'Icon'}
       style={{
         maxHeight: '20px',
         width: 'auto',
