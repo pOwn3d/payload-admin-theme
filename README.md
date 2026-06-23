@@ -18,7 +18,7 @@
 >
 > And ensure all `@consilioweb/*` packages are in `transpilePackages` in your `next.config.ts`:
 > ```ts
-> transpilePackages: ['@consilioweb/seo-analyzer', '@consilioweb/admin-nav', /* ...other @consilioweb packages */],
+> transpilePackages: ['@consilioweb/payload-seo-analyzer', '@consilioweb/payload-admin-nav', /* ...other @consilioweb packages */],
 > ```
 >
 > ✅ **Next.js 15** works without any workaround.
