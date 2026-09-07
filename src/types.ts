@@ -41,6 +41,38 @@ export interface AdminThemePluginConfig {
   themeInjectorPath?: string
 
   /**
+   * Override the ThemeInjectorClient component path.
+   * This is the client component that actually writes the CSS variables,
+   * customCSS, favicon and brand name — the RSC ThemeInjector only renders
+   * the hidden marker carrying the global slug.
+   *
+   * Required for symlinked/local development (link: in package.json), same
+   * caveat as themeInjectorPath.
+   * Default: '@consilioweb/payload-admin-theme/client#ThemeInjectorClient'
+   */
+  themeInjectorClientPath?: string
+
+  /**
+   * Replace the admin Logo/Icon with the plugin components that read
+   * `logoUrl` / `brandName` from the global.
+   *
+   * Graphics already declared by the host are never overwritten.
+   * Default: `true` when `faviconUrl` is set (legacy trigger), `false` otherwise.
+   */
+  replaceBranding?: boolean
+
+  /**
+   * Override the LoginBranding component path.
+   * Server component rendered in `admin.components.beforeLogin`, displaying the
+   * `loginTitle` / `loginSubtitle` / `loginLogoUrl` fields of the global.
+   *
+   * Required for symlinked/local development (link: in package.json), same
+   * caveat as themeInjectorPath.
+   * Default: '@consilioweb/payload-admin-theme/rsc#LoginBranding'
+   */
+  loginBrandingPath?: string
+
+  /**
    * Skip automatic component injection into afterNavLinks.
    * When true, only the global is created — you must manually
    * render ThemeInjectorClient from an existing component.

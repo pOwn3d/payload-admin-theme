@@ -1,41 +1,10 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
-import { lighten, darken } from '../utils/colorUtils.js'
+import { generateThemeCSS } from '../utils/cssVariables.js'
 import { getPresetColors } from '../utils/presets.js'
 import { fetchTheme } from '../utils/themeCache.js'
 import type { AdminThemeData } from '../types.js'
-
-/**
- * Build CSS variable declarations from a set of theme colors.
- * Shared between light and dark mode generation.
- */
-function buildColorVars(
-  primaryColor?: string | null,
-  accentColor?: string | null,
-  sidebarColor?: string | null,
-): string[] {
-  const vars: string[] = []
-
-  if (primaryColor) {
-    vars.push(`--theme-success-500: ${primaryColor}`)
-    vars.push(`--theme-text-link: ${primaryColor}`)
-    vars.push(`--theme-success-400: ${lighten(primaryColor, 0.15)}`)
-    vars.push(`--theme-success-600: ${darken(primaryColor, 0.15)}`)
-  }
-
-  if (accentColor) {
-    vars.push(`--theme-warning-500: ${accentColor}`)
-    vars.push(`--theme-warning-400: ${lighten(accentColor, 0.15)}`)
-    vars.push(`--theme-warning-600: ${darken(accentColor, 0.15)}`)
-  }
-
-  if (sidebarColor) {
-    vars.push(`--nav-color: ${sidebarColor}`)
-  }
-
-  return vars
-}
 
 /**
  * Resolve effective colors: preset overrides individual fields when not 'custom'.
@@ -59,7 +28,7 @@ function resolveColors(theme: AdminThemeData) {
 /**
  * ThemeInjectorClient — self-contained client component.
  * Fetches theme data via module-level cache (no React Context / createContext)
- * and injects CSS variables into the Payload admin panel.
+ * and injects CSS into the Payload admin panel.
  *
  * Supports:
  * - Theme presets (override individual color fields)
@@ -67,22 +36,26 @@ function resolveColors(theme: AdminThemeData) {
  * - Custom CSS injection
  * - Favicon and brand name customization
  */
-export const ThemeInjectorClient: React.FC = () => {
+export const ThemeInjectorClient: React.FC<{ globalSlug?: string }> = ({
+  globalSlug,
+}) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    // Read globalSlug from the RSC-injected data attribute
-    let slug = 'admin-theme'
-    const el = document.querySelector('[data-admin-theme-slug]')
-    if (el) {
-      const s = el.getAttribute('data-admin-theme-slug')
-      if (s) slug = s
+    // The slug comes from clientProps when the plugin registers this component.
+    // The [data-admin-theme-slug] marker rendered by the RSC wrapper is the
+    // fallback for hosts that mount this component themselves.
+    let slug = globalSlug ?? 'admin-theme'
+    if (!globalSlug) {
+      const el = document.querySelector('[data-admin-theme-slug]')
+      const fromDom = el?.getAttribute('data-admin-theme-slug')
+      if (fromDom) slug = fromDom
     }
 
     fetchTheme(slug).then((data) => {
       if (data) setTheme(data)
     })
-  }, [])
+  }, [globalSlug])
 
   useEffect(() => {
     if (!theme) return
@@ -99,45 +72,44 @@ export const ThemeInjectorClient: React.FC = () => {
     // Resolve colors (preset takes priority over individual fields)
     const { primaryColor, accentColor, sidebarColor } = resolveColors(theme)
 
-    // Build light mode variables
-    const lightVars = buildColorVars(primaryColor, accentColor, sidebarColor)
+    const blocks: string[] = []
 
-    if (theme.borderRadius != null) {
-      lightVars.push(`--style-radius-s: ${theme.borderRadius}px`)
-      lightVars.push(`--style-radius-m: ${theme.borderRadius + 2}px`)
-      lightVars.push(`--style-radius-l: ${theme.borderRadius + 4}px`)
-    }
+    const lightCSS = generateThemeCSS({
+      primaryColor,
+      accentColor,
+      sidebarColor,
+      borderRadius: theme.borderRadius,
+    })
+    if (lightCSS) blocks.push(lightCSS)
 
-    let css = ''
-
-    if (lightVars.length > 0) {
-      css += `:root {\n  ${lightVars.join(';\n  ')};\n}\n`
-    }
-
-    // Build dark mode overrides if any dark colors are set
+    // Dark mode overrides, only when at least one dark color is set
     const dark = theme.darkMode
     if (dark && (dark.primaryColor || dark.accentColor || dark.sidebarColor)) {
-      const darkVars = buildColorVars(dark.primaryColor, dark.accentColor, dark.sidebarColor)
-      if (darkVars.length > 0) {
-        css += `\n[data-theme="dark"] {\n  ${darkVars.join(';\n  ')};\n}\n`
-      }
+      const darkCSS = generateThemeCSS(
+        {
+          primaryColor: dark.primaryColor,
+          accentColor: dark.accentColor,
+          sidebarColor: dark.sidebarColor,
+        },
+        { scope: '[data-theme="dark"]' },
+      )
+      if (darkCSS) blocks.push(darkCSS)
     }
 
     // Inject custom CSS from the global
     if (theme.customCSS) {
-      css += `\n/* Custom CSS */\n${theme.customCSS}\n`
+      blocks.push(`/* Custom CSS */\n${theme.customCSS}`)
     }
 
-    // Hide Payload branding if configured
+    // Hide Payload branding if configured.
+    // `.graphic-logo` and `.graphic-icon` are the classes carried by Payload's
+    // own PayloadLogo / PayloadIcon SVGs. The previously targeted
+    // `.nav__brand` and `.payload-icon` do not exist in Payload 3.
     if (theme.hidePayloadBranding) {
-      css += `
-/* Hide Payload branding */
-.nav__brand .payload-icon,
-.nav__brand svg[class*="payload"],
-[class*="NavBrand"] svg {
-  display: none !important;
-}
-`
+      blocks.push(
+        '/* Hide Payload branding */\n' +
+          '.graphic-logo,\n.graphic-icon {\n  display: none !important;\n}',
+      )
     }
 
     // Update favicon if configured
@@ -162,7 +134,7 @@ export const ThemeInjectorClient: React.FC = () => {
       }
     }
 
-    styleEl.textContent = css
+    styleEl.textContent = blocks.join('\n\n')
 
     // Cleanup on unmount
     return () => {

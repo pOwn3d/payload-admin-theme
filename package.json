@@ -1,6 +1,6 @@
 {
   "name": "@consilioweb/payload-admin-theme",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Payload CMS plugin — customize admin panel appearance with theming, branding, and CSS variables",
   "type": "module",
   "main": "./dist/index.cjs",
@@ -36,9 +36,12 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && node scripts/check-build-artifacts.mjs",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "pnpm build"
+    "prepublishOnly": "pnpm build",
+    "verify:build": "node scripts/check-build-artifacts.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "payload",
@@ -64,44 +67,21 @@
   "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
   "license": "MIT",
   "peerDependencies": {
-    "@payloadcms/next": "^3.0.0",
-    "@payloadcms/translations": "^3.0.0",
     "@payloadcms/ui": "^3.0.0",
-    "next": "^14.0.0 || ^15.0.0 || ^16.0.0",
     "payload": "^3.0.0",
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
-  },
-  "peerDependenciesMeta": {
-    "@payloadcms/ui": {
-      "optional": true
-    },
-    "@payloadcms/translations": {
-      "optional": true
-    },
-    "@payloadcms/next": {
-      "optional": true
-    },
-    "next": {
-      "optional": true
-    },
-    "react": {
-      "optional": true
-    },
-    "react-dom": {
-      "optional": true
-    }
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^18.20.2 || >=20.9.0"
   },
   "devDependencies": {
-    "@payloadcms/translations": "^3.79.0",
     "@payloadcms/ui": "^3.79.0",
     "@types/react": "^19.0.0",
     "next": "^15.0.0",
     "payload": "^3.79.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.11"
   }
 }

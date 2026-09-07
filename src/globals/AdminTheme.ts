@@ -6,12 +6,56 @@ const HEX_COLOR_REGEX = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/
 const CSS_DANGEROUS_PATTERNS = [
   /@import/i,
   /url\s*\(/i,
+  /image-set\s*\(/i,
   /expression\s*\(/i,
   /javascript\s*:/i,
   /-moz-binding/i,
+  /behavior\s*:/i,
   /<\/style/i,
   /<script/i,
 ]
+
+/**
+ * Resolve CSS escape sequences before scanning.
+ *
+ * CSS lets any character in an identifier be written as `\` + up to six hex
+ * digits, so `@\69 mport` and `u\72 l(...)` are valid and used to slip past
+ * the patterns above untouched.
+ */
+function decodeCssEscapes(value: string): string {
+  return value.replace(
+    /\\([0-9a-fA-F]{1,6})[ \t\n\r\f]?|\\([\s\S])/g,
+    (_match, hex: string | undefined, char: string | undefined) => {
+      if (hex) {
+        const code = parseInt(hex, 16)
+        if (!Number.isFinite(code) || code <= 0 || code > 0x10ffff) return ''
+        return String.fromCodePoint(code)
+      }
+      return char ?? ''
+    },
+  )
+}
+
+/** Strip CSS comments, which would otherwise hide part of a scanned value. */
+function stripCssComments(value: string): string {
+  return value.replace(/\/\*[\s\S]*?(?:\*\/|$)/g, '')
+}
+
+/**
+ * Does this user hold the 'admin' role?
+ *
+ * `roles` is a plain string when the host declared it as a `select` field
+ * without `hasMany`; `String.prototype.includes` would then also accept
+ * 'admin-readonly' or 'non-admin', hence the exact match on that branch.
+ */
+function hasAdminRole(user: unknown): boolean {
+  if (!user || typeof user !== 'object') return false
+  const { role, roles } = user as { role?: unknown; roles?: unknown }
+  if (role === 'admin') return true
+  if (typeof roles === 'string') return roles === 'admin'
+  if (Array.isArray(roles)) return roles.includes('admin')
+  return false
+}
 
 function validateHexColor(value: string | null | undefined): string | true {
   if (!value) return true
@@ -33,10 +77,19 @@ function validateUrl(value: string | null | undefined): string | true {
   return true
 }
 
+/**
+ * Reject the CSS constructs that pull in remote resources or execute code.
+ *
+ * This is hardening, NOT a sandbox: custom CSS is a developer-level capability
+ * (a full-page overlay or an attribute-selector background can still be
+ * expressed in plain, valid CSS). It is gated on the update access below,
+ * which is admin-only by default.
+ */
 function validateCSS(value: string | null | undefined): string | true {
   if (!value) return true
+  const normalized = decodeCssEscapes(stripCssComments(value))
   for (const pattern of CSS_DANGEROUS_PATTERNS) {
-    if (pattern.test(value)) {
+    if (pattern.test(normalized)) {
       return `CSS contains a disallowed pattern: ${pattern.source}`
     }
   }
@@ -68,10 +121,15 @@ export function createAdminThemeGlobal(
     },
     access: {
       read: pluginConfig.access?.read ?? (() => true),
-      update: pluginConfig.access?.update ?? (({ req }) =>
-        Boolean(
-          req.user?.role === 'admin' || req.user?.roles?.includes('admin'),
-        )),
+      update: pluginConfig.access?.update ?? (({ req }) => {
+        const user = req.user
+        if (!user) return false
+        // Only the collection Payload uses for the admin panel may retheme it:
+        // another auth collection could carry a 'roles' field of its own.
+        const adminUserSlug = req.payload?.config?.admin?.user
+        if (adminUserSlug && user.collection !== adminUserSlug) return false
+        return hasAdminRole(user)
+      }),
     },
     fields: [
       {

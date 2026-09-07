@@ -9,9 +9,11 @@ import React from 'react'
  * lives in ThemeProvider.tsx (ThemeInjectorClient).
  *
  * We render a simple wrapper div with a data attribute carrying the globalSlug.
- * The ThemeInjectorClient (injected separately via afterNavLinks) reads this
- * attribute to know which global to fetch. This avoids importing client
- * components (createContext) in an RSC, which breaks Turbopack.
+ * ThemeInjectorClient is registered as its own afterNavLinks entry by the
+ * plugin (with the slug in clientProps) and falls back to reading this
+ * attribute when a host mounts it by hand. Importing the client component from
+ * here instead would pull createContext into the server tree and break
+ * Turbopack — hence the two separate importMap entries.
  */
 export const ThemeInjector: React.FC<{ globalSlug?: string }> = ({
   globalSlug = 'admin-theme',
