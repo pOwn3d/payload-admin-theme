@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: ['20.x', '22.x']
+        # Node 22 minimum: pnpm 11 (pinned via packageManager) requires the
+        # node:sqlite builtin, which does not exist before Node 22. This is a
+        # constraint of the toolchain, not of the published package — see engines.
+        node-version: ['22.x', '24.x']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
