@@ -10,14 +10,16 @@ import type { AdminThemeData } from '../types.js'
  *
  * Fetches theme data via module-level cache (no React Context / createContext).
  */
-export const AdminBranding: React.FC = () => {
+export const AdminBranding: React.FC<{ globalSlug?: string }> = ({
+  globalSlug = 'admin-theme',
+}) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    fetchTheme('admin-theme').then((data) => {
+    fetchTheme(globalSlug).then((data) => {
       if (data) setTheme(data)
     })
-  }, [])
+  }, [globalSlug])
 
   if (!theme?.logoUrl) {
     // Render brand name as text fallback
@@ -55,14 +57,16 @@ export const AdminBranding: React.FC = () => {
  *
  * Fetches theme data via module-level cache (no React Context / createContext).
  */
-export const AdminIcon: React.FC = () => {
+export const AdminIcon: React.FC<{ globalSlug?: string }> = ({
+  globalSlug = 'admin-theme',
+}) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    fetchTheme('admin-theme').then((data) => {
+    fetchTheme(globalSlug).then((data) => {
       if (data) setTheme(data)
     })
-  }, [])
+  }, [globalSlug])
 
   if (!theme?.logoUrl) return null
 

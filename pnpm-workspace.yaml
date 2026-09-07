@@ -1,0 +1,15 @@
+# pnpm 11 requires package build scripts to be opted into explicitly. Without
+# this file `pnpm install --frozen-lockfile` exits 1 with ERR_PNPM_IGNORED_BUILDS,
+# which fails the CI on its very first step.
+# Note: the key is `allowBuilds`; `onlyBuiltDependencies` is the pnpm 10 spelling
+# and is silently ineffective here.
+
+packages:
+  - '.'
+
+allowBuilds:
+  # tsup and vitest both run esbuild; its postinstall links the platform binary.
+  esbuild: true
+  # Transitive optional of payload (image processing). Never invoked by this
+  # package's build or tests, and it ships prebuilt binaries anyway.
+  sharp: false

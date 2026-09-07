@@ -2,3 +2,4 @@
 // These are NOT 'use client' — they can be safely registered in Payload importMap
 export { ThemeInjector } from './components/ThemeInjector.js'
 export { ThemeNavLink } from './components/ThemeNavLink.js'
+export { LoginBranding } from './components/LoginBranding.js'

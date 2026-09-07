@@ -39,5 +39,11 @@ const PRESETS: Record<Exclude<ThemePreset, 'custom'>, PresetColors> = {
  */
 export function getPresetColors(preset: ThemePreset | null | undefined): PresetColors | null {
   if (!preset || preset === 'custom') return null
-  return PRESETS[preset] ?? null
+  // Own-property guard: a bare lookup also answers for inherited keys, so
+  // `getPresetColors('toString')` handed back Object.prototype.toString and the
+  // caller treated that function as a preset.
+  if (!Object.prototype.hasOwnProperty.call(PRESETS, preset)) return null
+  // Copy: PRESETS is a module-level singleton. Returning the internal object let
+  // any consumer's mutation poison the preset for the whole process.
+  return { ...PRESETS[preset] }
 }
