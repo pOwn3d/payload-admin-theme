@@ -77,12 +77,12 @@
     "node": "^18.20.2 || >=20.9.0"
   },
   "devDependencies": {
-    "@payloadcms/ui": "^3.79.0",
-    "@types/react": "^19.0.0",
-    "next": "^15.0.0",
-    "payload": "^3.79.0",
-    "tsup": "^8.0.0",
-    "typescript": "^5.5.0",
+    "@payloadcms/ui": "^3.88.0",
+    "@types/react": "^19.2.18",
+    "next": "^15.5.25",
+    "payload": "^3.88.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
     "vitest": "^4.1.11"
   }
 }
