@@ -1,4 +1,4 @@
-import type { GlobalConfig } from 'payload'
+import type { FieldAccess, GlobalConfig, PayloadRequest } from 'payload'
 import type { AdminThemePluginConfig } from '../types.js'
 
 const HEX_COLOR_REGEX = /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/
@@ -56,6 +56,109 @@ function hasAdminRole(user: unknown): boolean {
   if (Array.isArray(roles)) return roles.includes('admin')
   return false
 }
+
+/**
+ * Layer 1 of `canOpenAdminPanel` below: does this user belong to the collection
+ * the admin panel authenticates against? Call `canOpenAdminPanel`, not this —
+ * it is the single entry point both the field `read` guard and the default
+ * `update` rule go through.
+ *
+ * Deliberately NOT `!!req.user`: a host may declare several auth collections
+ * (front-office customers, support agents...). Those users are authenticated,
+ * yet they never open the admin panel and must not be handed its stylesheet.
+ * The comparison is against `config.admin.user`, the collection Payload itself
+ * uses for the admin panel; when the config does not declare one, any
+ * authenticated user is accepted, which is the pre-existing behaviour.
+ *
+ * The `admin` role is NOT required here: an editor logged into the admin panel
+ * needs the theme to be applied to their own session, and a user who can
+ * `update` the global must be able to read every field it writes back.
+ */
+function isAdminPanelUser(user: unknown, adminUserSlug: unknown): boolean {
+  if (!user || typeof user !== 'object') return false
+  if (typeof adminUserSlug === 'string' && adminUserSlug) {
+    const { collection } = user as { collection?: unknown }
+    if (collection !== adminUserSlug) return false
+  }
+  return true
+}
+
+/**
+ * The `access.admin` function the host declared on the user's own collection.
+ *
+ * Same lookup Payload performs in `utilities/canAccessAdmin` — deliberately the
+ * user's own collection and not a slug of our own, so both gates read the same
+ * declaration and cannot drift apart. Returns `undefined` when the host
+ * declares none, which is the majority of installs.
+ */
+type AdminAccessFn = (args: { req: PayloadRequest }) => boolean | Promise<boolean>
+
+function adminPanelAccessFn(req: PayloadRequest): AdminAccessFn | undefined {
+  const collectionSlug = (req.user as { collection?: unknown } | null | undefined)?.collection
+  if (typeof collectionSlug !== 'string' || !collectionSlug) return undefined
+  const fn = req.payload?.collections?.[collectionSlug]?.config?.access?.admin
+  return typeof fn === 'function' ? (fn as AdminAccessFn) : undefined
+}
+
+/**
+ * May this request open the admin panel?
+ *
+ * Two layers, in the order Payload itself applies them:
+ *
+ *  1. membership of the collection Payload uses for the admin panel
+ *     (`isAdminPanelUser`);
+ *  2. the `access.admin` function of that collection, when one is declared.
+ *
+ * Layer 2 is what makes the guard mean what its name says. The most common
+ * Payload 3 layout keeps ONE `users` collection for the public site and the
+ * admin panel and separates them with `access.admin`; stopping at layer 1
+ * there hands the admin stylesheet to every registered front-office account,
+ * since their `collection` matches. Layer 2 is only ever restrictive: when the
+ * host declares nothing, the previous behaviour stands.
+ *
+ * Anonymous requests are refused before layer 2 on purpose. Payload's own
+ * helper falls back to a `payload.find()` on the users collection there (the
+ * `/create-first-user` case); running that once per guarded field would turn
+ * `curl /api/globals/admin-theme` into a burst of database reads driven by an
+ * unauthenticated caller.
+ *
+ * Returns a plain boolean whenever no `access.admin` is declared, so the common
+ * path costs no microtask; `FieldAccess` and `Access` both accept either shape.
+ * A guard that throws denies — a host whose `access.admin` throws is already
+ * locking that user out of the panel.
+ */
+function canOpenAdminPanel(req: PayloadRequest): boolean | Promise<boolean> {
+  if (!isAdminPanelUser(req.user, req.payload?.config?.admin?.user)) return false
+  const adminAccess = adminPanelAccessFn(req)
+  if (!adminAccess) return true
+  try {
+    return Promise.resolve(adminAccess({ req })).then(Boolean, () => false)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Field-level `read` guard for the values nothing renders before login.
+ *
+ * The global stays readable by everyone by default, because `AdminBranding` /
+ * `AdminIcon` (mounted in `admin.components.graphics`) fetch
+ * `/api/globals/<slug>` from the browser while the login page is displayed —
+ * they need `brandName` and `logoUrl` without a session.
+ *
+ * Every other value is only ever consumed by `ThemeInjectorClient`, mounted in
+ * `afterNavLinks`, i.e. inside an authenticated admin session. Leaving them in
+ * the anonymous response leaked `customCSS` — a developer-written stylesheet
+ * routinely naming internal collection slugs, unreleased `data-*` hooks or
+ * staging URLs — to `curl /api/globals/admin-theme`.
+ *
+ * `LoginBranding` is unaffected: it reads through the local API
+ * (`payload.findGlobal`), which runs with `overrideAccess: true`.
+ */
+const readableByAdminPanelUsers: FieldAccess = ({ req }) => canOpenAdminPanel(req)
+
+/** Spread onto every field with no anonymous reader. */
+const adminPanelOnly = { access: { read: readableByAdminPanelUsers } }
 
 function validateHexColor(value: string | null | undefined): string | true {
   if (!value) return true
@@ -122,18 +225,19 @@ export function createAdminThemeGlobal(
     access: {
       read: pluginConfig.access?.read ?? (() => true),
       update: pluginConfig.access?.update ?? (({ req }) => {
-        const user = req.user
-        if (!user) return false
-        // Only the collection Payload uses for the admin panel may retheme it:
-        // another auth collection could carry a 'roles' field of its own.
-        const adminUserSlug = req.payload?.config?.admin?.user
-        if (adminUserSlug && user.collection !== adminUserSlug) return false
-        return hasAdminRole(user)
+        // Same gate as the field-level `read` above, on purpose: writing the
+        // stylesheet must never be open to someone the read guard would turn
+        // away. The role check runs first — it is sync and free, and it keeps
+        // a host-supplied `access.admin` off the path for callers who are
+        // rejected anyway.
+        if (!hasAdminRole(req.user)) return false
+        return canOpenAdminPanel(req)
       }),
     },
     fields: [
       {
         name: 'preset',
+        ...adminPanelOnly,
         type: 'select',
         label: {
           en: 'Theme Preset',
@@ -175,6 +279,7 @@ export function createAdminThemeGlobal(
           {
             name: 'primaryColor',
             type: 'text',
+            ...adminPanelOnly,
             label: {
               en: 'Primary Color',
               fr: 'Couleur principale',
@@ -193,6 +298,7 @@ export function createAdminThemeGlobal(
           {
             name: 'accentColor',
             type: 'text',
+            ...adminPanelOnly,
             label: {
               en: 'Accent Color',
               fr: 'Couleur d\'accent',
@@ -211,6 +317,7 @@ export function createAdminThemeGlobal(
           {
             name: 'sidebarColor',
             type: 'text',
+            ...adminPanelOnly,
             label: {
               en: 'Sidebar Color',
               fr: 'Couleur de la barre laterale',
@@ -230,6 +337,7 @@ export function createAdminThemeGlobal(
       },
       {
         name: 'borderRadius',
+        ...adminPanelOnly,
         type: 'number',
         label: {
           en: 'Border Radius (px)',
@@ -262,6 +370,7 @@ export function createAdminThemeGlobal(
       },
       {
         name: 'faviconUrl',
+        ...adminPanelOnly,
         type: 'text',
         label: {
           en: 'Favicon URL',
@@ -335,6 +444,7 @@ export function createAdminThemeGlobal(
       },
       {
         name: 'darkMode',
+        ...adminPanelOnly,
         type: 'group',
         label: {
           en: 'Dark Mode Overrides',
@@ -395,6 +505,7 @@ export function createAdminThemeGlobal(
       },
       {
         name: 'hidePayloadBranding',
+        ...adminPanelOnly,
         type: 'checkbox',
         label: {
           en: 'Hide Payload Branding',
@@ -410,6 +521,7 @@ export function createAdminThemeGlobal(
       },
       {
         name: 'customCSS',
+        ...adminPanelOnly,
         type: 'textarea',
         label: {
           en: 'Custom CSS',

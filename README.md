@@ -60,7 +60,7 @@ capability rather than a sandbox.
 - **Login page** — title, subtitle and logo rendered above the login form
 - **Custom CSS** — extra rules written from the admin panel, filtered by a blocklist
 - **Nav link** — a sidebar link to the theme global (label hardcoded as `Thème`)
-- **Single fetch** — one request per global slug, shared by every component through a module-level cache (no React Context, Turbopack-safe)
+- **Single fetch** — one request per global slug and per read scope, shared by every component through a module-level cache (no React Context, Turbopack-safe)
 - **Validation** — hex format on every color field, URL scheme on the logo/favicon/login-logo fields, blocklist on custom CSS
 
 ## Installation
@@ -117,7 +117,7 @@ been saved, the stored values are what gets applied.
 | `replaceBranding` | `boolean` | `true` when `faviconUrl` is set | Assign `admin.components.graphics.Logo` / `.Icon` to the components that read `logoUrl` from the global. Graphics already declared by the host are never overwritten |
 | `skipComponentInjection` | `boolean` | `false` | Create the global only — no `afterNavLinks`, no nav link, no `beforeLogin`, no `graphics`. See [Manual Registration](#manual-registration) |
 | `colorPickerComponent` | `string \| false` | `'@consilioweb/payload-admin-theme/client#ColorPickerField'` | Custom Field component for the color fields; `false` leaves them as plain text inputs |
-| `access` | `{ read?, update? }` | read: everyone, update: admin-only | Access control for the global. Each is `(args: { req }) => boolean \| Promise<boolean>` |
+| `access` | `{ read?, update? }` | read: everyone, update: admin-only | Document-level access control for the global. Each is `(args: { req }) => boolean \| Promise<boolean>`. The field-level `read` guard described in [The `admin-theme` Global](#the-admin-theme-global) applies on top of `read` and is not overridable |
 | `themeInjectorPath` | `string` | `'@consilioweb/payload-admin-theme/rsc#ThemeInjector'` | Override the RSC marker component path (needed with `link:` packages) |
 | `themeInjectorClientPath` | `string` | `'@consilioweb/payload-admin-theme/client#ThemeInjectorClient'` | Override the client injector path (needed with `link:` packages) |
 | `loginBrandingPath` | `string` | `'@consilioweb/payload-admin-theme/rsc#LoginBranding'` | Override the login branding component path (needed with `link:` packages) |
@@ -156,7 +156,7 @@ package root and returns a copy of those values, or `null` for `'custom'` and un
 
 | Slug | Role | Read | Update |
 |------|------|------|--------|
-| `admin-theme` (`globalSlug`) | Holds every theme value; label **Admin Theme**, group **Settings** | Everyone, by default — the client injector fetches `/api/globals/<slug>` from the browser | Logged-in users of the admin panel's own collection holding an `admin` role — exact rule below |
+| `admin-theme` (`globalSlug`) | Holds every theme value; label **Admin Theme**, group **Settings** | Everyone, by default — but most **fields** are restricted, see below | Logged-in users of the admin panel's own collection holding an `admin` role — exact rule below |
 
 The default `update` rule accepts a logged-in user whose `role` is exactly `'admin'`, or whose
 `roles` is exactly `'admin'` (string field) or contains `'admin'` (array field) — and, when the config
@@ -164,9 +164,44 @@ exposes `admin.user`, who belongs to that collection. A user collection carrying
 a `roles` field never satisfies it: pass your own `access.update` there, or nobody will be able to
 save the global.
 
-Both rules are replaceable through the `access` option. Note that the default read access makes the
-stored values — brand name, colors and custom CSS included — publicly readable over the REST API;
-pass `access.read` if that matters to you.
+Both rules are replaceable through the `access` option.
+
+### Which fields an anonymous request gets back
+
+The document is readable without a session because `AdminBranding` / `AdminIcon`
+(`admin.components.graphics`) fetch `/api/globals/<slug>` from the browser **while the login page is
+displayed**. Only what that unauthenticated render needs is left in the anonymous response:
+
+| Readable by anyone | Readable by admin-panel users only |
+|---|---|
+| `brandName`, `logoUrl` — the login-page logo | `preset`, `primaryColor`, `accentColor`, `sidebarColor`, `borderRadius`, `faviconUrl`, `darkMode`, `hidePayloadBranding`, **`customCSS`** |
+| `loginTitle`, `loginSubtitle`, `loginLogoUrl` — already printed above the login form | |
+
+The restricted column carries a field-level `access.read` that accepts a logged-in user **belonging
+to the collection Payload uses for the admin panel** (`config.admin.user`) — not merely any
+authenticated user, since a host may run other auth collections (front-office customers, support
+agents) that have no business reading the admin's stylesheet. No role is required: an editor still
+gets their admin themed, and anyone who can `update` the global can read every field it writes back.
+When the config declares no `admin.user`, any authenticated user passes.
+
+`customCSS` is the reason this matters: it is a developer-written stylesheet, and it routinely names
+internal collection slugs, unreleased `data-*` hooks or staging URLs in its comments.
+
+The field guard is not removed by passing your own `access.read`: that option widens or narrows the
+**document** rule, the per-field rule always applies on top of it. Server-side readers are
+unaffected — `payload.findGlobal()` from the local API runs with `overrideAccess: true` and still
+sees the whole document, which is how `LoginBranding` renders.
+
+That last point is the one to keep in mind if you build your own route on top of the global: the
+field guard protects `/api/globals/<slug>`, not a route of yours that re-publishes what the local
+API handed it. See [Server-Side CSS Endpoint](#server-side-css-endpoint), whose example gates the
+route on a session for exactly that reason.
+
+The guard accepts a user who could actually open the panel, not merely one stored in the right
+collection: when the admin collection declares an `access.admin` function — the usual way to run one
+`users` collection for both the public site and the admin — that function is evaluated too, so a
+front-office account it turns away is turned away here as well. The default `update` rule applies the
+same two layers on top of its role check.
 
 | Field | Type | Effect |
 |-------|------|--------|
@@ -186,11 +221,20 @@ pass `access.read` if that matters to you.
 URL fields only accept a value starting with `/`, `https://` or `data:image/`. Color fields only
 accept `#RGB` or `#RRGGBB`.
 
-The theme is fetched once per full page load and kept in a module-level cache keyed by slug for the
-rest of that browsing session, so soft navigations reuse it: changes saved in the global appear after
-a hard reload. When that request fails — network error, or a `read` rule that denies the logged-in
-user — nothing is applied and the browser console carries `[admin-theme] Failed to fetch theme
-data:`; the failed request is dropped from the cache, so the next component mount retries it.
+The theme is fetched once per full page load and kept in a module-level cache for the rest of that
+browsing session, so soft navigations reuse it: changes saved in the global appear after a hard
+reload. When that request fails — network error, or a `read` rule that denies the logged-in user —
+nothing is applied and the browser console carries `[admin-theme] Failed to fetch theme data:`; the
+failed request is dropped from the cache, so the next component mount retries it.
+
+That cache is keyed by slug **and by read scope**, because the login page and the themed admin do
+not get the same document back from the same URL. `AdminBranding` / `AdminIcon` ask for the
+`branding` scope and are answered without a session — the field guard above strips the rest.
+`ThemeInjectorClient` asks for the `full` scope from inside the admin. Payload's login is a
+client-side navigation, so nothing reloads the JS module graph: with a single slot, the stripped
+anonymous document read on the login page would have been handed straight to the injector and the
+admin would have stayed unthemed until a manual refresh. A `full` payload that comes back stripped
+anyway is returned to its caller but never memoised, so the next mount re-reads it.
 
 ## Custom CSS
 
@@ -305,15 +349,33 @@ stylesheet from your own route. `generateThemeCSS()` only emits the color and ra
 values it is handed: it resolves no preset, and the `customCSS` and `hidePayloadBranding` parts of the
 injected stylesheet are yours to append.
 
+**Gate the route on a session.** It reads the global through the *local* API, and `payload.findGlobal()`
+runs with `overrideAccess: true`: the field-level guard described in
+[Which fields an anonymous request gets back](#which-fields-an-anonymous-request-gets-back) does **not**
+apply there. An ungated route republishes `customCSS` and every restricted value to
+`curl /api/admin-theme-css`, which undoes that guard on your install.
+
 ```ts
 // src/app/api/admin-theme-css/route.ts
+import { headers as nextHeaders } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { getPayload } from 'payload'
 import config from '@payload-config'
 import { generateThemeCSS, getPresetColors } from '@consilioweb/payload-admin-theme'
 
+const CSS_HEADERS = { 'Content-Type': 'text/css; charset=utf-8' }
+
 export async function GET() {
   const payload = await getPayload({ config })
+
+  // The local API below bypasses access control (`overrideAccess: true`), so this
+  // route — and nothing else — decides who gets the stylesheet. Without the check,
+  // customCSS is public.
+  const { user } = await payload.auth({ headers: await nextHeaders() })
+  if (!user) {
+    return new NextResponse('/* unauthorized */', { status: 401, headers: CSS_HEADERS })
+  }
+
   const theme = await payload.findGlobal({ slug: 'admin-theme' })
 
   // The client injector resolves the preset before generating anything — do the same,
@@ -332,9 +394,7 @@ export async function GET() {
     .filter(Boolean)
     .join('\n\n')
 
-  return new NextResponse(css || '/* no theme */', {
-    headers: { 'Content-Type': 'text/css; charset=utf-8' },
-  })
+  return new NextResponse(css || '/* no theme */', { headers: CSS_HEADERS })
 }
 ```
 
@@ -343,6 +403,16 @@ Then import it from your `custom.scss`:
 ```scss
 @import url('/api/admin-theme-css');
 ```
+
+That `@import` is a same-origin request from an admin page, so the `payload-token` cookie travels with
+it and a logged-in admin still receives the sheet; anonymous callers get a 401 and the login page keeps
+rendering its own branding through `LoginBranding` / `AdminBranding`. Tighten the check further with
+the same rule the plugin uses — `payload.auth()` also returns `permissions.canAccessAdmin`.
+
+If you would rather keep the route public, do not drop the check: replace the read with
+`payload.findGlobal({ slug: 'admin-theme', overrideAccess: false, user })`. The field guard then
+applies to the endpoint too, and an anonymous response simply comes back without `customCSS`, the
+colors, the radius and the dark-mode overrides.
 
 `generateThemeCSS(values, options?)` returns a full stylesheet — custom properties *and* element
 rules — for the values it is handed. `generateCSSVariables(values)` is its light-mode-only alias, kept

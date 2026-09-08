@@ -52,7 +52,10 @@ export const ThemeInjectorClient: React.FC<{ globalSlug?: string }> = ({
       if (fromDom) slug = fromDom
     }
 
-    fetchTheme(slug).then((data) => {
+    // 'full' scope: this component only ever mounts inside an authenticated
+    // admin session (afterNavLinks), and it needs the fields the anonymous
+    // read is stripped of — customCSS, colors, borderRadius, faviconUrl.
+    fetchTheme(slug, 'full').then((data) => {
       if (data) setTheme(data)
     })
   }, [globalSlug])
