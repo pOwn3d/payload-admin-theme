@@ -34,10 +34,11 @@
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "scripts"
   ],
   "scripts": {
-    "build": "tsup && node scripts/check-build-artifacts.mjs",
+    "build": "tsup && node scripts/check-build-artifacts.mjs && node scripts/verify-dist-imports.mjs",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "pnpm build",
     "verify:build": "node scripts/check-build-artifacts.mjs",
