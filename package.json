@@ -1,6 +1,6 @@
 {
   "name": "@consilioweb/payload-admin-theme",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "packageManager": "pnpm@11.25.0",
   "description": "Payload CMS plugin — customize admin panel appearance with theming, branding, and CSS variables",
   "type": "module",
@@ -68,8 +68,8 @@
   "author": "ConsilioWEB <contact@consilioweb.fr> (https://consilioweb.fr)",
   "license": "MIT",
   "peerDependencies": {
-    "@payloadcms/ui": "^3.0.0",
-    "payload": "^3.0.0",
+    "@payloadcms/ui": "^3.79.1",
+    "payload": "^3.79.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1"
   },

@@ -75,8 +75,12 @@ All four peer dependencies are required (none is optional since 0.3.0); a Payloa
 has them:
 
 ```bash
-pnpm add payload@^3.0.0 @payloadcms/ui@^3.0.0 react@^19.0.1 react-dom@^19.0.1
+pnpm add payload@^3.79.1 @payloadcms/ui@^3.79.1 react@^19.0.1 react-dom@^19.0.1
 ```
+
+3.79.1 is a hard floor, not a preference: earlier Payload 3 releases are vulnerable to
+GHSA-hp5w-3hxx-vmwf (pre-auth account takeover) and to the SQL injection fixed in the same round. See
+[Requirements](#requirements).
 
 ## Quick Start
 
@@ -349,11 +353,17 @@ stylesheet from your own route. `generateThemeCSS()` only emits the color and ra
 values it is handed: it resolves no preset, and the `customCSS` and `hidePayloadBranding` parts of the
 injected stylesheet are yours to append.
 
-**Gate the route on a session.** It reads the global through the *local* API, and `payload.findGlobal()`
-runs with `overrideAccess: true`: the field-level guard described in
-[Which fields an anonymous request gets back](#which-fields-an-anonymous-request-gets-back) does **not**
-apply there. An ungated route republishes `customCSS` and every restricted value to
+**Gate the route on an admin-panel session — not merely on a session.** It reads the global through
+the *local* API, and `payload.findGlobal()` runs with `overrideAccess: true`: the field-level guard
+described in [Which fields an anonymous request gets back](#which-fields-an-anonymous-request-gets-back)
+does **not** apply there. An ungated route republishes `customCSS` and every restricted value to
 `curl /api/admin-theme-css`, which undoes that guard on your install.
+
+An `if (!user)` gate is not enough, and that is the whole point of the check below. Payload issues one
+`payload-token` cookie for *every* auth collection and resolves it without filtering on one, so a
+front-office `customers` account — or a `users` account your `access.admin` turns away — reaches the
+handler with a perfectly valid, non-null `user`. Match the plugin's own guard instead:
+`permissions.canAccessAdmin`, which `payload.auth()` already computed.
 
 ```ts
 // src/app/api/admin-theme-css/route.ts
@@ -371,8 +381,15 @@ export async function GET() {
   // The local API below bypasses access control (`overrideAccess: true`), so this
   // route — and nothing else — decides who gets the stylesheet. Without the check,
   // customCSS is public.
-  const { user } = await payload.auth({ headers: await nextHeaders() })
-  if (!user) {
+  //
+  // `!user` is NOT the check to make. One `payload-token` cookie is shared by every
+  // auth collection, so a front-office `customers` account is a non-null `user` here
+  // and would walk straight through. `canAccessAdmin` is the rule the plugin's own
+  // field guard applies: the caller belongs to `config.admin.user` AND that
+  // collection's `access.admin`, when declared, lets them in. Payload deletes the
+  // key when it is false, so test it for truthiness — never `=== false`.
+  const { permissions } = await payload.auth({ headers: await nextHeaders() })
+  if (!permissions?.canAccessAdmin) {
     return new NextResponse('/* unauthorized */', { status: 401, headers: CSS_HEADERS })
   }
 
@@ -405,14 +422,16 @@ Then import it from your `custom.scss`:
 ```
 
 That `@import` is a same-origin request from an admin page, so the `payload-token` cookie travels with
-it and a logged-in admin still receives the sheet; anonymous callers get a 401 and the login page keeps
-rendering its own branding through `LoginBranding` / `AdminBranding`. Tighten the check further with
-the same rule the plugin uses — `payload.auth()` also returns `permissions.canAccessAdmin`.
+it and a logged-in admin still receives the sheet; anonymous callers, users of another auth collection
+and accounts refused by `access.admin` all get the same 401, and the login page keeps rendering its own
+branding through `LoginBranding` / `AdminBranding` (both read the global server-side, so they are
+unaffected).
 
-If you would rather keep the route public, do not drop the check: replace the read with
+If you would rather keep the route public, do not drop the check: also destructure `user` from
+`payload.auth()` and replace the read with
 `payload.findGlobal({ slug: 'admin-theme', overrideAccess: false, user })`. The field guard then
-applies to the endpoint too, and an anonymous response simply comes back without `customCSS`, the
-colors, the radius and the dark-mode overrides.
+applies to the endpoint too, and a response for anyone outside the admin panel — anonymous or not —
+simply comes back without `customCSS`, the colors, the radius and the dark-mode overrides.
 
 `generateThemeCSS(values, options?)` returns a full stylesheet — custom properties *and* element
 rules — for the values it is handed. `generateCSSVariables(values)` is its light-mode-only alias, kept
@@ -423,8 +442,8 @@ performed by the client injector, not CSS a stylesheet can carry.
 
 | Package | Range | Notes |
 |---------|-------|-------|
-| `payload` | `^3.0.0` | Required peer |
-| `@payloadcms/ui` | `^3.0.0` | Required peer — the color picker field imports `useField` from it |
+| `payload` | `^3.79.1` | Required peer. 3.79.1 is the first release patched against GHSA-hp5w-3hxx-vmwf (pre-auth account takeover) and the SQL injection of the same round; it is also the first one this plugin can honestly claim to run on, since the React 19 peer below rules out everything under 3.79. Developed and tested against 3.88 |
+| `@payloadcms/ui` | `^3.79.1` | Required peer — the color picker field imports `useField` from it. Kept in lockstep with `payload`, which is how Payload ships them |
 | `react`, `react-dom` | `^19.0.1` | Required peers; React 18 is not supported (`@payloadcms/ui` 3.79+ needs React 19) |
 | Node | `^18.20.2 \|\| >=20.9.0` | Aligned on Payload's own `engines` |
 | Next.js | not a peer | The plugin never imports `next`; use whatever your Payload version supports (15 and 16 for Payload 3.7x+) |

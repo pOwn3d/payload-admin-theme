@@ -5,6 +5,91 @@ All notable changes to `@consilioweb/payload-admin-theme` will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-09-08
+
+Second security release of the day, and it reaches two audiences only: installs that copied the
+README's Server-Side CSS Endpoint into their app, and installs whose lockfile still resolves a
+Payload below 3.79.1. 0.4.0 closed the anonymous read of the `admin-theme` global; the audit pass
+that followed found that the route 0.4.0 documented as the fix still admitted *any* authenticated
+account, from any auth collection. No runtime source file changed in this release — the whole of it
+is the documented recipe, the peer floor, and the tests that now execute both.
+
+### Security
+
+- **The documented CSS endpoint gated on `!user`, which is not an authorization check.** Payload
+  issues a single `payload-token` cookie for *every* auth collection and resolves it without
+  filtering on one, so `payload.auth()` returns a perfectly valid, non-null `user` for a front-office
+  `customers` signup — or for a `users` account your own `access.admin` turns away at the panel door.
+  Either caller walked straight through the `if (!user)` gate and received the whole stylesheet:
+  `customCSS`, `primaryColor`, `accentColor`, `sidebarColor`, `borderRadius`, `faviconUrl` and the
+  dark-mode overrides, all read with `overrideAccess: true` and therefore past the field guard 0.4.0
+  added. The hole is as old as the section: 0.1.0 through 0.3.0 documented the route with no gate at
+  all, and 0.4.0 — shipped hours ago — replaced that with a check that stops nobody who has an
+  account. The snippet now destructures `permissions` from the same `payload.auth()` call and
+  requires `permissions?.canAccessAdmin`, the same rule the plugin's own field guard applies;
+  Payload's `sanitizePermissions` deletes that key when it is false, so it must be tested for
+  truthiness and never against `=== false`. **What to check on your install:** if
+  `src/app/api/admin-theme-css/route.ts` (or any route of yours reading this global through the local
+  API) exists, patch it yourself — a package cannot reach into your app's route handlers. Then, if
+  any auth collection on that site accepts public signups, treat everything in `customCSS` as having
+  been readable by every account that could register: it is developer-written CSS, and its selectors
+  and comments routinely name internal collection slugs, staging hosts and unreleased `data-*` hooks.
+  `LoginBranding` and `AdminBranding` read the global server-side and are unaffected either way.
+- **The `payload` peer range allowed a Payload with a pre-authentication account takeover.**
+  `peerDependencies` declared `^3.0.0` for `payload` and `@payloadcms/ui` — unchanged since 0.2.0 and
+  still that in 0.4.0 — so a fresh install was free to resolve any 3.x, including the releases
+  affected by GHSA-hp5w-3hxx-vmwf (pre-auth account takeover through password recovery) and by the
+  SQL injection fixed in the same round. Both are patched in 3.79.1, which is now the floor. This is
+  a Payload vulnerability, not one in this plugin's code, but the range was the plugin's instruction
+  to your package manager, and it was also plainly wrong on its own terms: the `react@^19.0.1` peer
+  already rules out everything below 3.79, so `^3.0.0` never described a combination that installs.
+  **What to check on your install:** `pnpm why payload` / `npm ls payload` in the app, not the
+  declared range — a floor in a peer range does not move a version your lockfile already pinned.
+
+### Breaking
+
+- **`peerDependencies.payload` and `peerDependencies['@payloadcms/ui']` move from `^3.0.0` to
+  `^3.79.1`.** It stays a caret range on the 3 major — no ceiling was added — but npm 7+ fails an
+  install on a peer conflict, and pnpm does too under `strict-peer-dependencies`, so an app on
+  Payload 3.0–3.78 that installed quietly will now stop. There is no code change behind it: the
+  plugin imports no 3.79+ API. Upgrading Payload is the fix; nothing here can be worked around by
+  pinning the plugin.
+- **The documented endpoint now refuses authenticated callers who cannot open the admin panel.** On
+  hosts that adopt the updated snippet, an account from another auth collection, and an account
+  `access.admin` rejects, go from `200` and a full stylesheet to `401`. If you were deliberately
+  theming something outside the panel from that URL, use the public variant the README documents
+  instead — `payload.findGlobal({ slug: 'admin-theme', overrideAccess: false, user })` — which keeps
+  the route open and lets the field guard strip the restricted values from the response.
+
+### Changed
+
+- **README install line and Requirements table now state `^3.79.1`**, with the advisory named at both
+  places. The most-copied line in the file, `pnpm add payload@^3.0.0 …`, would otherwise have kept
+  the vulnerable version one shell command away while the peer range said the opposite.
+- **Dev toolchain raised past the same advisories.** `payload` and `@payloadcms/ui` to `^3.88.0`,
+  `next` to `^15.5.25`, `@types/react` to `^19.2.18`, `tsup` to `^8.5.1`, `typescript` to `^5.9.3`.
+  These are `devDependencies` and ship in no tarball, but they ran in CI and in every checkout.
+  Dependabot's security-updates stream — which ignores `open-pull-requests-limit` and any group
+  without `applies-to` — is now grouped into a single pull request, and npm version updates dropped
+  from weekly to monthly.
+
+### Added
+
+- **The README's route is now executed, not merely read: 138 tests → 149.** The six existing
+  `readmeCssEndpoint` tests asserted only that *a* gate was textually present in the snippet, which
+  is precisely how `!user` shipped in 0.4.0. Five new ones compile the documented code block, inject
+  its imports and run it against a simulated `payload`, caller by caller: an admin-panel user still
+  gets the complete sheet (the guard against over-correcting), an anonymous caller gets `401`, an
+  account from another auth collection gets neither `200` nor `customCSS`, an account refused by
+  `access.admin` likewise, and no restricted field leaks — the colors and the dark overrides are
+  checked individually, not just `customCSS`. The fake `findGlobal` honours both documented modes, so
+  the assertions hold whichever of the two fixes a host picks.
+- **A new `peerRange` suite (6 tests) keeps the floor from drifting back.** It asserts the declared
+  lower bound is at least 3.79.1 for both Payload peers, that the range stays `^3.x` rather than
+  hardening into a pin, that `devDependencies` actually cover what `peerDependencies` promises — so
+  the floor is exercised by the test run rather than merely announced — and that neither the README's
+  Requirements table nor its `pnpm add` line drifts away from `package.json`.
+
 ## [0.4.0] - 2026-09-08
 
 Security release. Every version published so far — 0.1.0 through 0.3.0 — answers an unauthenticated
@@ -251,6 +336,7 @@ the global and the custom-CSS filter, and finally renders the login-page fields.
 - Nav link in admin sidebar
 - Server-side rendering (no client-side flicker)
 
+[0.5.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.2.2...v0.3.0
 [0.2.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.1.0...v0.2.0
