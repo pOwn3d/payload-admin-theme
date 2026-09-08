@@ -16,7 +16,11 @@ export const AdminBranding: React.FC<{ globalSlug?: string }> = ({
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    fetchTheme(globalSlug).then((data) => {
+    // 'branding' scope: these two render on the LOGIN page, without a
+    // session, and only need the publicly readable brandName / logoUrl.
+    // Their own cache slot, so this anonymous read never lands in the one
+    // the themed admin session reads afterwards.
+    fetchTheme(globalSlug, 'branding').then((data) => {
       if (data) setTheme(data)
     })
   }, [globalSlug])
@@ -63,7 +67,11 @@ export const AdminIcon: React.FC<{ globalSlug?: string }> = ({
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
 
   useEffect(() => {
-    fetchTheme(globalSlug).then((data) => {
+    // 'branding' scope: these two render on the LOGIN page, without a
+    // session, and only need the publicly readable brandName / logoUrl.
+    // Their own cache slot, so this anonymous read never lands in the one
+    // the themed admin session reads afterwards.
+    fetchTheme(globalSlug, 'branding').then((data) => {
       if (data) setTheme(data)
     })
   }, [globalSlug])

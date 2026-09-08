@@ -5,6 +5,78 @@ All notable changes to `@consilioweb/payload-admin-theme` will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-09-08
+
+Security release. Every version published so far — 0.1.0 through 0.3.0 — answers an unauthenticated
+`GET /api/globals/admin-theme` with the complete document, `customCSS` included. This release keeps
+the document readable (the login page needs it) but restricts nine of its fields to users who can
+actually open the admin panel, and fixes the README endpoint recipe that re-published the same
+values from a route of your own. If you store anything in `customCSS` you would not put on a public
+URL, treat it as having been public since you installed the plugin, and check your access logs for
+hits on `/api/globals/<globalSlug>` from outside your admin.
+
+### Security
+
+- **`customCSS` and eight other fields were readable by anyone, with no session at all.** The
+  `admin-theme` global has been readable by default since 0.1.0 (`access.read` defaults to
+  `() => true`) and nothing narrowed that per field, so an anonymous `GET /api/globals/<globalSlug>`
+  — or the equivalent GraphQL selection — returned `preset`, `primaryColor`, `accentColor`,
+  `sidebarColor`, `borderRadius`, `faviconUrl`, `darkMode`, `hidePayloadBranding` and `customCSS` to
+  any caller on the internet. `customCSS` is the one that matters: it is a developer-written
+  stylesheet, and its selectors and comments routinely name internal collection slugs, unreleased
+  `data-*` hooks and staging URLs. Writing was never open — the `update` rule already required a
+  role. Those nine fields now carry a field-level `access.read`; `brandName`, `logoUrl`,
+  `loginTitle`, `loginSubtitle` and `loginLogoUrl` stay public, because `AdminBranding` / `AdminIcon`
+  fetch them from the browser while the login page is on screen.
+- **The new field guard admits admin-panel users, not merely authenticated ones.** It accepts a user
+  belonging to the collection Payload authenticates the panel against (`config.admin.user`) *and*,
+  when that collection declares an `access.admin` function, accepted by it. The second layer is what
+  makes the guard mean what it says on the most common Payload 3 layout — one `users` collection for
+  the public site and the admin, separated by `access.admin` — where checking collection membership
+  alone would have handed the admin stylesheet to every registered front-office account. No role is
+  required: an editor still gets their panel themed. When the config declares no `admin.user`, any
+  authenticated user passes, which is the pre-existing behaviour. An `access.admin` that throws
+  denies.
+- **The documented Server-Side CSS Endpoint published the same values from a second URL.** The
+  README's `src/app/api/admin-theme-css/route.ts` snippet read the global through the local API,
+  which runs with `overrideAccess: true` and therefore bypasses the new field guard, then wrote
+  `customCSS` and the colors straight into an ungated `GET` response — so on installs that copied it,
+  `/api/admin-theme-css` stayed anonymously readable and the hardening above bought them nothing. The
+  snippet now calls `payload.auth()` and returns `401` without a session; a same-origin `@import`
+  from `custom.scss` carries the `payload-token` cookie, so a logged-in admin still gets the sheet.
+  If you already deployed that route, patch it — the plugin cannot reach into it. A public variant is
+  documented too: pass `overrideAccess: false` and the `user` to `findGlobal`, and anonymous
+  responses simply come back without the restricted fields. A test now asserts the README snippet
+  stays gated.
+- **The default `update` rule applies the same admin-panel check on top of its role check.** Saving
+  the global previously required an `admin` role plus membership of `config.admin.user`; it now also
+  goes through the collection's `access.admin` when one is declared. An `admin`-role account that
+  your own `access.admin` turns away at the panel door can no longer rewrite the panel's stylesheet
+  through the API — and will start getting a write rejection it did not get on 0.3.0. Pass your own
+  `access.update` if you need the old rule back.
+
+### Changed
+
+- **`access.read` is document-level and no longer the whole story.** Passing your own `access.read`
+  widens or narrows who gets a response; the per-field guard always applies on top of it and is not
+  overridable. If you were relying on the public global to feed theme colors to your front-end over
+  REST, that read now comes back without them — move it server-side (`payload.findGlobal()` from the
+  local API still returns the whole document, which is how `LoginBranding` renders) or copy the
+  values into a global of your own.
+- **The client-side theme cache is keyed by slug *and* read scope.** The same URL now answers two
+  different documents depending on the session, and Payload's login is a client-side navigation that
+  does not reload the JS module graph — with a single cache slot, the stripped document read on the
+  login page would have been served to the injector right after login and left the panel unthemed
+  until a manual refresh. `AdminBranding` / `AdminIcon` read the `branding` scope, `ThemeInjectorClient`
+  the `full` one, and a `full` response that comes back stripped anyway is used once but never
+  memoised. These functions are internal — no exported API changed.
+- **Release pipeline hardened.** Every GitHub Action in `ci.yml` and `publish.yml` — the workflow that
+  builds and publishes the tarball you install — is now pinned to a commit SHA instead of a movable
+  tag, and a `security.yml` workflow runs `pnpm audit --audit-level high`, a gitleaks secret scan and
+  CodeQL (`security-extended`) on every push, every pull request and weekly. A Dependabot config
+  keeps dependencies current while holding back major bumps of the `payload`, `react`, `react-dom`
+  and `next` peer ranges, which are a semver decision rather than an automated one.
+
 ## [0.3.0] - 2026-09-07
 
 Theming actually applies again — the component that writes the CSS was registered nowhere in the
@@ -179,6 +251,7 @@ the global and the custom-CSS filter, and finally renders the login-page fields.
 - Nav link in admin sidebar
 - Server-side rendering (no client-side flicker)
 
+[0.4.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.2.2...v0.3.0
 [0.2.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/pOwn3d/payload-admin-theme/releases/tag/v0.1.0
