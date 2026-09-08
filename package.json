@@ -83,7 +83,7 @@
     "next": "^15.5.25",
     "payload": "^3.88.0",
     "tsup": "^8.5.1",
-    "typescript": "^5.9.3",
-    "vitest": "^4.1.11"
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.0"
   }
 }
