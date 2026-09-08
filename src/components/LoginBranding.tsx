@@ -15,6 +15,15 @@ import type { AdminThemeData } from '../types.js'
  *
  * Renders nothing when none of the three fields is filled in, so hosts that
  * leave them empty see the stock login page.
+ *
+ * RESILIENCE — try/catch, not an ErrorBoundary. No `'use client'` here: this
+ * is a server component mounted from Payload's import map, so the plugin can
+ * never place a client boundary above it (see ErrorBoundary.tsx). And this is
+ * the worst possible slot to throw in — `beforeLogin` renders on the
+ * UNAUTHENTICATED login page, so an error escaping here locks every user out
+ * of the admin with no screen left to fix it from. Hence two layers: the inner
+ * catch that reports a global that cannot be read, and the outer one that
+ * swallows anything the render itself might throw on a malformed document.
  */
 export const LoginBranding: React.FC<{
   globalSlug?: string
@@ -40,34 +49,44 @@ export const LoginBranding: React.FC<{
     return null
   }
 
-  const { loginTitle, loginSubtitle, loginLogoUrl } = theme ?? {}
+  try {
+    const { loginTitle, loginSubtitle, loginLogoUrl } = theme ?? {}
 
-  if (!loginTitle && !loginSubtitle && !loginLogoUrl) return null
+    if (!loginTitle && !loginSubtitle && !loginLogoUrl) return null
 
-  return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '24px',
-        textAlign: 'center',
-      }}
-    >
-      {loginLogoUrl ? (
-        <img
-          alt={loginTitle || 'Logo'}
-          src={loginLogoUrl}
-          style={{ maxHeight: '64px', width: 'auto', objectFit: 'contain' }}
-        />
-      ) : null}
-      {loginTitle ? (
-        <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{loginTitle}</h1>
-      ) : null}
-      {loginSubtitle ? (
-        <p style={{ margin: 0, opacity: 0.7 }}>{loginSubtitle}</p>
-      ) : null}
-    </div>
-  )
+    return (
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '24px',
+          textAlign: 'center',
+        }}
+      >
+        {loginLogoUrl ? (
+          <img
+            alt={loginTitle || 'Logo'}
+            src={loginLogoUrl}
+            style={{ maxHeight: '64px', width: 'auto', objectFit: 'contain' }}
+          />
+        ) : null}
+        {loginTitle ? (
+          <h1 style={{ fontSize: '1.5rem', fontWeight: 700, margin: 0 }}>{loginTitle}</h1>
+        ) : null}
+        {loginSubtitle ? (
+          <p style={{ margin: 0, opacity: 0.7 }}>{loginSubtitle}</p>
+        ) : null}
+      </div>
+    )
+  } catch (err) {
+    // Rendering the login page matters more than rendering the branding on it.
+    payload.logger?.warn?.(
+      `[admin-theme] Could not render the login branding: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    )
+    return null
+  }
 }

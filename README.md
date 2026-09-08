@@ -45,8 +45,11 @@ capability rather than a sandbox.
 - [Package Exports](#package-exports)
 - [Manual Registration](#manual-registration)
 - [Server-Side CSS Endpoint](#server-side-css-endpoint)
+- [Database and updates](#database-and-updates)
 - [Requirements](#requirements)
+- [Upgrading from 0.3.x](#upgrading-from-03x)
 - [Upgrading from 0.2.x](#upgrading-from-02x)
+- [Uninstall](#uninstall)
 - [Support](#support)
 - [License](#license)
 
@@ -169,6 +172,12 @@ a `roles` field never satisfies it: pass your own `access.update` there, or nobo
 save the global.
 
 Both rules are replaceable through the `access` option.
+
+**Scope: one Payload instance, one look.** `admin-theme` is a Payload *global* — a single row, read
+by every admin session of the instance. There is no per-tenant, per-site or per-user variant, and
+the plugin is **not compatible with `@payloadcms/plugin-multi-tenant`**: tenants sharing one Payload
+instance share one theme, and the last administrator to save the global repaints the panel for all
+of them. Run one Payload instance per brand if they need different branding.
 
 ### Which fields an anonymous request gets back
 
@@ -438,6 +447,24 @@ rules — for the values it is handed. `generateCSSVariables(values)` is its lig
 for compatibility. The favicon and the `document.title` prefix stay out of reach: they are DOM writes
 performed by the client injector, not CSS a stylesheet can carry.
 
+## Database and updates
+
+- This plugin adds a global to your Payload config. It does not own the schema — your app does. It
+  adds nothing to your own collections: `admin-theme` is the only table it is responsible for.
+- **Payload does not let a plugin ship migrations.** `payload migrate` reads a single directory, and
+  it resolves it in the host app, never in a dependency (`payload/dist/database/migrations/readMigrationFiles.js`,
+  `findMigrationDir.js`). A migration file published inside an npm package is dead code.
+- **In development**, `push` syncs the schema for you — there is nothing to run.
+- **In production**, run `payload migrate:create` then `payload migrate`. Never `push`: it is skipped
+  as soon as `NODE_ENV=production`, and mixing it with migrations raises a data-loss warning
+  (`@payloadcms/drizzle/dist/migrate.js`).
+- Every release of this plugin states in its own `Upgrading` section whether it changes the schema.
+  None has since 0.3.0 — and that is checkable rather than asserted: `pnpm schema:diff` extracts the
+  schema-bearing literals (`name`, `slug`, `type`, `relationTo`, `unique`, `index`, `required`,
+  `hasMany`, `virtual`) declared under `src/globals` at each tag and set-diffs consecutive ones. It
+  exits non-zero the day one of them moves. `access`, `hooks` and `validate` are excluded on
+  purpose: Payload stores none of them, so changing them owes you no migration.
+
 ## Requirements
 
 | Package | Range | Notes |
@@ -447,6 +474,25 @@ performed by the client injector, not CSS a stylesheet can carry.
 | `react`, `react-dom` | `^19.0.1` | Required peers; React 18 is not supported (`@payloadcms/ui` 3.79+ needs React 19) |
 | Node | `^18.20.2 \|\| >=20.9.0` | Aligned on Payload's own `engines` |
 | Next.js | not a peer | The plugin never imports `next`; use whatever your Payload version supports (15 and 16 for Payload 3.7x+) |
+
+## Upgrading from 0.3.x
+
+**No schema change.** The set of `name` / `type` / `slug` literals declared in
+`src/globals/AdminTheme.ts` is identical between `v0.3.0` and this release: no field added, removed
+or retyped. Re-check it yourself with `pnpm schema:diff v0.3.0 HEAD` — see
+[Database and updates](#database-and-updates).
+
+What did change is who may **read** what. 0.4.0 put a field-level `access.read` on everything except
+`brandName`, `logoUrl` and the three login-page fields, so `GET /api/globals/admin-theme` without a
+session now comes back without `customCSS`, the colors, the border radius, the favicon URL, the
+preset, the dark-mode overrides and `hidePayloadBranding`. See
+[Which fields an anonymous request gets back](#which-fields-an-anonymous-request-gets-back).
+
+The one observable consequence: **any external consumer of `/api/globals/<slug>` must now
+authenticate** as a user of the admin panel's own collection. A public page or a build script that
+read the theme colors anonymously will silently get a document with those keys missing — check for
+`undefined`, and give the request a session (or read the global server-side through
+`payload.findGlobal()`, which runs with `overrideAccess: true` and is unaffected).
 
 ## Upgrading from 0.2.x
 
@@ -469,6 +515,49 @@ performed by the client injector, not CSS a stylesheet can carry.
   previous substring match accepted `admin-readonly` or `non-admin`.
 - **`skipComponentInjection: true` now also skips the nav link**, and a `graphics.Logo` / `.Icon`
   declared by the host is no longer overwritten.
+
+## Uninstall
+
+1. Remove the plugin from your `payload.config.ts`
+2. Uninstall the package:
+
+```bash
+pnpm remove @consilioweb/payload-admin-theme
+```
+
+3. Regenerate the importmap:
+
+```bash
+pnpm generate:importmap
+```
+
+Step 3 is not optional: the import map still lists `@consilioweb/payload-admin-theme/client#…` and
+`/rsc#…` entries, and Payload fails to build an admin panel whose import map points at a package
+that is no longer installed.
+
+### Data cleanup (optional)
+
+The `admin-theme` global stays in your database after uninstall. It is one row and it harms nothing,
+but to remove it:
+
+**SQLite:**
+```sql
+DROP TABLE IF EXISTS admin_theme;
+```
+
+**PostgreSQL:**
+```sql
+DROP TABLE IF EXISTS "admin_theme" CASCADE;
+```
+
+**MongoDB:**
+```js
+db.globals.deleteOne({ globalType: 'admin-theme' })
+```
+
+If you passed a custom `globalSlug`, substitute it — SQL adapters name the table after the
+snake_cased slug (`@payloadcms/drizzle`, `createTableName` → `toSnakeCase`), so `globalSlug: 'my-theme'`
+gives `my_theme`, while MongoDB keeps the slug as written in `globalType`.
 
 ## Support
 

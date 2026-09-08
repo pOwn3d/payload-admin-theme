@@ -1,29 +1,22 @@
 'use client'
 
-import React, { useCallback } from 'react'
+import React, { useCallback, useId } from 'react'
 import { useField } from '@payloadcms/ui'
 import type { TextFieldClientProps } from 'payload'
+import { colorPickerLabel, resolveLabel } from '../utils/labels.js'
 
 const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
   const { value, setValue } = useField<string>({ path })
 
-  const label =
-    typeof field?.label === 'string'
-      ? field.label
-      : typeof field?.label === 'object'
-        ? (field.label as Record<string, string>).fr || (field.label as Record<string, string>).en || ''
-        : ''
+  // `useId` and not a literal: the theme global renders this component six
+  // times on the same screen (three colors, plus the three dark-mode
+  // overrides), and duplicate ids would break the very association below.
+  const id = useId()
 
-  const description =
-    'admin' in field && field.admin?.description
-      ? typeof field.admin.description === 'string'
-        ? field.admin.description
-        : typeof field.admin.description === 'object'
-          ? (field.admin.description as Record<string, string>).fr ||
-            (field.admin.description as Record<string, string>).en ||
-            ''
-          : ''
-      : ''
+  const { text: label, locale } = resolveLabel(field?.label)
+  const { text: description } = resolveLabel(
+    field && 'admin' in field ? field.admin?.description : undefined,
+  )
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -32,19 +25,27 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
     [setValue],
   )
 
+  const descriptionId = description ? `${id}-description` : undefined
+
   return (
     <div className="field-type text" style={{ width: '100%' }}>
       {label && (
-        <label className="field-label" style={{ display: 'block', marginBottom: 4 }}>
+        <label
+          className="field-label"
+          htmlFor={id}
+          style={{ display: 'block', marginBottom: 4 }}
+        >
           {label}
         </label>
       )}
       <div style={{ position: 'relative' }}>
         <input
+          id={id}
           type="text"
           value={value || ''}
           onChange={handleChange}
           placeholder="#000000"
+          aria-describedby={descriptionId}
           style={{
             width: '100%',
             padding: '10px 48px 10px 12px',
@@ -58,6 +59,9 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
         />
         <input
           type="color"
+          // Never `htmlFor`-associated with the label above: a <label> names
+          // exactly one control, and it already names the text input.
+          aria-label={colorPickerLabel(label, locale)}
           value={value || '#000000'}
           onChange={handleChange}
           style={{
@@ -77,6 +81,7 @@ const ColorPickerField: React.FC<TextFieldClientProps> = ({ path, field }) => {
       </div>
       {description && (
         <div
+          id={descriptionId}
           className="field-description"
           style={{ marginTop: 4, fontSize: 12, color: 'var(--theme-elevation-400)' }}
         >

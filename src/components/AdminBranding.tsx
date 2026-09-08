@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { AdminThemeErrorBoundary } from './ErrorBoundary.js'
 import { fetchTheme } from '../utils/themeCache.js'
 import type { AdminThemeData } from '../types.js'
 
@@ -9,8 +10,13 @@ import type { AdminThemeData } from '../types.js'
  * with the configured custom branding.
  *
  * Fetches theme data via module-level cache (no React Context / createContext).
+ *
+ * The exported symbol is the boundary-wrapped wrapper, not this component:
+ * Payload mounts `graphics.Logo` from the import map, on the login page
+ * included, so the plugin has no chance to place an ancestor around it. See
+ * ErrorBoundary.tsx.
  */
-export const AdminBranding: React.FC<{ globalSlug?: string }> = ({
+const AdminBrandingInner: React.FC<{ globalSlug?: string }> = ({
   globalSlug = 'admin-theme',
 }) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
@@ -56,12 +62,20 @@ export const AdminBranding: React.FC<{ globalSlug?: string }> = ({
   )
 }
 
+export const AdminBranding: React.FC<{ globalSlug?: string }> = (props) => (
+  // `fallback={null}`: no logo is a cosmetic loss, a thrown error on the login
+  // page is a lockout.
+  <AdminThemeErrorBoundary fallback={null} slotName="graphics.Logo (AdminBranding)">
+    <AdminBrandingInner {...props} />
+  </AdminThemeErrorBoundary>
+)
+
 /**
  * AdminIcon — smaller version for nav/tab icon usage.
  *
  * Fetches theme data via module-level cache (no React Context / createContext).
  */
-export const AdminIcon: React.FC<{ globalSlug?: string }> = ({
+const AdminIconInner: React.FC<{ globalSlug?: string }> = ({
   globalSlug = 'admin-theme',
 }) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
@@ -90,3 +104,9 @@ export const AdminIcon: React.FC<{ globalSlug?: string }> = ({
     />
   )
 }
+
+export const AdminIcon: React.FC<{ globalSlug?: string }> = (props) => (
+  <AdminThemeErrorBoundary fallback={null} slotName="graphics.Icon (AdminIcon)">
+    <AdminIconInner {...props} />
+  </AdminThemeErrorBoundary>
+)

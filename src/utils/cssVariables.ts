@@ -26,6 +26,42 @@
  *  - `--theme-success-*` / `--theme-warning-*` do exist but carry the
  *    success/warning semantics (banners, toasts), which is why "Primary Color"
  *    used to recolor success banners instead of the primary button.
+ *
+ * SETTLED — DO NOT RE-EXPLORE: writing the `--color-base-0…1000` scale.
+ *
+ * The recurring idea is to stop writing individual rules and instead generate
+ * Payload's whole neutral ramp from the brand color by interpolating in OKLCH,
+ * letting Payload's own dark mode invert it for free. It was re-checked against
+ * the stylesheets shipped by @payloadcms/ui 3.88.0 and it does not work. Three
+ * facts, each sufficient on its own:
+ *
+ *  1. THE RAMP IS ALSO THE TEXT COLOR. `scss/app.scss:21` sets
+ *     `--theme-text: var(--theme-elevation-800)` and `scss/colors.scss:183`
+ *     aliases `--theme-elevation-800` to `--color-base-800`. Writing the scale
+ *     therefore recolors every piece of body text in the panel — the exact
+ *     failure mode the `.btn--style-*` local properties above exist to avoid.
+ *  2. ONE STEP, TWO OPPOSITE ROLES. `--theme-elevation-800` is used 49 times in
+ *     those stylesheets, as a FOREGROUND (`scss/type.scss:108`,
+ *     `elements/Pill/index.scss:13`, `scss/toasts.scss:44`) AND as a SURFACE
+ *     (`elements/Tooltip/index.scss:8`, whose own text is
+ *     `--theme-elevation-0` at line 12; `elements/Drawer/index.scss:74`;
+ *     `elements/Pill/index.scss:132`). A single generated value would have to
+ *     be readable ON elevation-0 and readable UNDER elevation-0 at once.
+ *     Payload's greyscale gets away with it because it is symmetric around the
+ *     mid step; a ramp built from one brand hue is not.
+ *  3. DARK MODE IS NOT AN INVERSION. `scss/colors.scss:189-212` is a hand-made
+ *     mapping, not a mirror: `--theme-elevation-900`, `-950` and `-1000` ALL
+ *     collapse onto `--color-base-0`, and `--theme-elevation-500` is not
+ *     remapped at all. So in dark mode `--theme-text` (`app.scss:78`, elevation
+ *     1000) resolves to `--color-base-0` — the very step that is the page
+ *     BACKGROUND in light mode (`--theme-bg: var(--theme-elevation-0)`).
+ *     One generated value, background in one theme and body text in the other:
+ *     no interpolation can satisfy both.
+ *
+ * `--color-base-*` is consumed almost exclusively through the
+ * `--theme-elevation-*` aliases (3 direct uses in the whole package:
+ * `app.scss:84`, `:88`, `elements/Drawer/index.scss:132`), so there is no
+ * halfway version of this either. The targeted rules below stay.
  */
 
 import { darken, lighten, readableTextColor } from './colorUtils.js'

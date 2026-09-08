@@ -187,6 +187,38 @@ function validateUrl(value: string | null | undefined): string | true {
  * (a full-page overlay or an attribute-selector background can still be
  * expressed in plain, valid CSS). It is gated on the update access below,
  * which is admin-only by default.
+ *
+ * SETTLED — DO NOT RE-EXPLORE, twice over.
+ *
+ * (a) DROPPING THIS FILTER, on the grounds that `access.update` already gates
+ *     the field. It does not carry the weight that argument gives it. The value
+ *     saved here is written verbatim into a `<style>` element of every admin
+ *     page (components/ThemeProvider.tsx, `blocks.push(theme.customCSS)` then
+ *     `styleEl.textContent = ...`). CSS in that position is an exfiltration
+ *     primitive, not decoration: `input[value^="a"] { background: url(...) }`
+ *     leaks form content one character per request, and `@import` pulls a
+ *     remote stylesheet into an authenticated page on every load. The nine
+ *     patterns above are exactly the constructs that can reach the network or
+ *     execute, and `stripCssComments` + `decodeCssEscapes` close the two
+ *     bypasses that made an earlier version of them cosmetic (`\/*…*\/` and
+ *     `u\72 l(`). And `access.update` is a *replaceable* option
+ *     (`pluginConfig.access?.update` below): a host that widens it — the README
+ *     documents doing exactly that — is left with this filter as the only
+ *     remaining layer. Removing it would be a strict regression.
+ *
+ * (b) REPLACING IT WITH A POSTCSS ALLOWLIST. Two costs, no demonstrated gain.
+ *     `validate` runs on the server at write time, so postcss would have to
+ *     become a RUNTIME dependency of a package that declares no runtime
+ *     dependency at all today — no `dependencies` key in package.json. And a
+ *     property allowlist
+ *     does not even address the threat: `url()` lives in the VALUE of
+ *     otherwise perfectly legitimate properties (`background`, `border-image`,
+ *     `cursor`, `mask`, `content`, `@font-face src`), so an allowlist would
+ *     still need this same value-level scan bolted on top of a parser, while
+ *     rejecting the custom properties, `@media`, `@supports` and vendor
+ *     prefixes real theming is made of. The honest limit of the current filter
+ *     is stated above and in the README: it stops the network and the script
+ *     engine, not everything CSS can do to a layout.
  */
 function validateCSS(value: string | null | undefined): string | true {
   if (!value) return true

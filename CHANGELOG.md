@@ -5,6 +5,138 @@ All notable changes to `@consilioweb/payload-admin-theme` will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-09-08
+
+Not a security release: nothing here is exploitable, no advisory is involved, and if you took 0.5.0
+this morning you are already safe — take this one whenever it suits you. It closes what the two
+security passes left open: the plugin's accessibility debt (EAA / RGAA), what your admin does when
+one of these components throws, and the two questions every install eventually asks — does this
+release owe my database a migration, and how do I remove the plugin cleanly. No schema change, no
+breaking change.
+
+### Fixed
+
+- **Four accessibility defects — three in `ColorPickerField`, the plugin's only custom field
+  component and the one Payload mounts six times on the same screen** (three light colors, three
+  dark-mode overrides). (1) The `<label className="field-label">` carried no `htmlFor` and the text
+  input no `id`, so the control had **no accessible name at all**, and clicking the label did not
+  focus it; both now come from `useId()` rather than a literal, precisely because six instances
+  share that screen and duplicate ids would break the association they are meant to create. (2) The
+  `<input type="color">` overlaid on the field had no name either — no `<label>`, no `aria-label`,
+  nothing — so a screen reader announced an unidentified control sitting on the same value as the
+  one next to it. It now carries an `aria-label` of its own (`Couleur principale — selecteur de
+  couleur`), built from the field's label plus a suffix resolved into the same language, and
+  deliberately *not* wired to the `<label>`: a `<label>` names exactly one control, and it already
+  names the text input. (3) `admin.description` was rendered in a bare `<div>` with no relationship
+  to the input; it now gets an `id` and the input an `aria-describedby`, emitted **only** when a
+  description exists, since an `aria-describedby` pointing at nothing is a failure on its own. That
+  is WCAG 4.1.2 (Name, Role, Value) and 1.3.1 (Info and Relationships), both level A. (4) In
+  `ThemeNavLink`, the sidebar icon is now `aria-hidden="true" focusable="false"`, so the link
+  announces "Thème" instead of dragging its `<svg>` into the accessibility tree.
+- **Nothing else in the package needed accessibility work, and stating that is part of the audit.**
+  The plugin overrides none of Payload's focus indicators, renders no `<button>` (so there is no
+  implicit-submit `type="button"` to correct), and builds no tabs widget: the single `role="alert"`
+  in the package is the error panel added below.
+
+### Added
+
+- **An error boundary at the three client mount points — and the radius is the whole point.**
+  `AdminBranding` / `AdminIcon` are mounted in `admin.components.graphics` and `ThemeInjectorClient`
+  in `afterNavLinks` (see `plugin.ts`). `afterNavLinks` renders on **every** admin page, and
+  `graphics.Logo` renders on the **unauthenticated login page**. React unmounts the tree up to the
+  nearest boundary and Payload declares none around plugin slots, so until now a single throw inside
+  a forty-line logo component did not degrade a corner of a screen — it blanked the admin, login
+  page included, leaving nowhere to fix it from. `AdminThemeErrorBoundary`
+  (`src/components/ErrorBoundary.tsx`) now wraps all three. Because Payload mounts them from the
+  import map, the plugin can never place an ancestor around them: the boundary lives *inside* the
+  module and the exported symbol is the wrapper. Each passes `fallback={null}` — a red panel across
+  the sidebar of every admin page is worse than a missing logo — and the test is `'fallback' in
+  props`, not `fallback ?? <panel>`, so an explicit `null` stays silent instead of quietly becoming
+  the visible panel. The error goes to the console with the failing slot named, never on screen: on
+  the graphics slot that string would be printed on an unauthenticated page. `resetKeys` clears a
+  standing error and remounts the subtree under a fresh `key`, so it restarts instead of resuming
+  the state that crashed it. Read what it does **not** catch: React boundaries catch render errors
+  only, so the rejected `fetch('/api/globals/<slug>')` in `useEffect` and anything thrown in an
+  event handler go straight past it — which is why `fetchTheme` keeps its own try/catch. The
+  boundary is internal wiring, not public API; it is not re-exported from `./client`.
+- **The three server components are guarded by try/catch instead, because a client boundary cannot
+  be their ancestor.** `ThemeInjector` and `ThemeNavLink` (`afterNavLinks`) and `LoginBranding`
+  (`beforeLogin`) carry no `'use client'` directive on purpose — one would pull `createContext` into
+  the server tree and break Turbopack, which is the reason the `./rsc` entrypoint exists — and
+  Payload mounts them from the import map into the RSC stream, where no client boundary can ever
+  wrap them. All three now return `null` rather than propagate, and all three destructure their
+  props **inside** the try: parameter destructuring runs before the body, so a prop whose getter
+  throws would otherwise slip past the guard entirely. `LoginBranding` gains a second layer — its
+  existing catch covered `findGlobal` alone, so a document the database returned but the component
+  could not read went past it and took the unauthenticated login page down with it; that path now
+  warns through `payload.logger` and renders nothing.
+- **`pnpm schema:diff`, so "no migration needed" is checked instead of asserted.**
+  `scripts/schema-diff.mjs` extracts the schema-bearing literals declared under
+  `src/{collections,globals,modules}` at two git refs — `name`, `slug`, `type`, `relationTo`, plus
+  the `unique` / `index` / `required` / `hasMany` / `virtual` flags — and set-diffs them, exiting
+  non-zero the day one of them moves. It strips comments first, because docblocks in this repo quote
+  field names in backticks and a naive grep would turn a documentation-only release into a phantom
+  schema diff — which is exactly what this release would have looked like. `access`, `hooks`,
+  `validate`, labels and descriptions are excluded on purpose: Payload stores none of them, so
+  changing them owes nobody a migration. Run with no argument it walks every consecutive tag;
+  `v0.2.0` through `HEAD` all report `no schema change`.
+- **Three README sections answering the questions this plugin kept being asked.** *Database and
+  updates*: the plugin adds one global, owns no schema and touches none of your collections — and
+  **Payload does not let a plugin ship migrations**, because `payload migrate` resolves its single
+  migration directory in the host app and never in a dependency, so a migration file published
+  inside an npm tarball is dead code. `push` covers development; production is `payload
+  migrate:create` then `payload migrate`, and never `push`, which is skipped under
+  `NODE_ENV=production` and raises a data-loss warning when mixed with migrations. *Upgrading from
+  0.3.x*: no schema change, and the one observable consequence of the 0.4.0 field guard — an
+  external consumer reading `/api/globals/<slug>` anonymously now receives a document with
+  `customCSS`, the colors, the border radius, the favicon URL, the preset and the dark-mode
+  overrides simply **missing**, not an error. Check for `undefined`, give the request a session, or
+  read the global server-side through `payload.findGlobal()`, which is unaffected. *Uninstall*:
+  remove it from the config, `pnpm remove`, and — not optional — regenerate the import map, since
+  Payload refuses to build an admin panel whose import map points at a package that is no longer
+  installed.
+- **Data cleanup on uninstall, spelled out per adapter.** The `admin-theme` global is one row and it
+  survives the uninstall; the README now gives the exact statement for SQLite, PostgreSQL and
+  MongoDB, plus the naming rule for a custom `globalSlug` (SQL adapters snake_case it —
+  `my-theme` becomes `my_theme` — while MongoDB keeps it verbatim in `globalType`). There is nothing
+  else to remove and nothing to schedule: the plugin stores no personal data, writes to no
+  collection of yours, and makes exactly one network call — from the browser, to your own
+  `/api/globals/<slug>`. Dropping the row is housekeeping, not a retention obligation.
+- **149 tests → 198**, in five new suites written against the defects above rather than around them.
+  `colorPickerField` (6) walks the returned React tree — the package carries neither jsdom nor
+  testing-library — and asserts the label/input pairing, the swatch's distinct name, and that no
+  `aria-describedby` is emitted when there is no description to point at. `labels` (8) covers the
+  extracted resolver, including that a non-string label resolves to empty rather than putting
+  `[object Object]` in a `<label>`, and that the existing `fr`-then-`en` order is preserved.
+  `errorBoundary` (15) drives `getDerivedStateFromError`, `getDerivedStateFromProps` and `render`
+  directly and pins the two traps — `fallback={null}` must render exactly nothing, and the default
+  panel must leak no stack — its last three cases asserting that the exported `AdminBranding`,
+  `AdminIcon` and `ThemeInjectorClient` really are the wrappers, with an explicit `null` fallback.
+  `rscGuards` (8) hands each server component a props object whose `globalSlug` getter throws, which
+  is the only way to prove the guard reaches the props read. `readmeSections` (12) treats the new
+  documentation as code: the uninstall SQL is checked against the table name the adapters actually
+  derive from the slug, because a `DROP TABLE` in a doc that names the wrong table is a destructive
+  command that fails — or worse, that hits something else.
+
+### Changed
+
+- **`AdminBranding`, `AdminIcon` and `ThemeInjectorClient` now export the boundary wrapper, not the
+  component itself.** Same props, same output, same import-map paths, nothing to do on your side —
+  but the rendered element's `type` is `AdminThemeErrorBoundary`, so anything of yours that asserts
+  on the inner tree needs one hop more.
+- **A failure in a plugin slot now degrades silently, which is a trade rather than a free win.** A
+  crash that used to be impossible to miss is now a missing logo, or an admin that renders unthemed,
+  plus one `[admin-theme] <slot> failed to render…` line in the browser console. If the theme stops
+  applying after this upgrade, that console line is the first place to look.
+- **The README now states that the plugin is incompatible with `@payloadcms/plugin-multi-tenant`.**
+  No code changed — it is a statement of what a Payload global *is*: a single row per instance, read
+  by every admin session, so tenants sharing one instance share one theme and the last administrator
+  to save repaints the panel for all of them. One Payload instance per brand is the answer.
+- **The build guard covers the two new client-pass artifacts.** `dist/components/ErrorBoundary.js`
+  and `dist/utils/labels.js` must ship with the `"use client"` banner tsup prepends; `verify:build`
+  now reports 9 client files, 5 server files and 8 export targets, and fails the build if either one
+  lands in the RSC pass by mistake.
+
 ## [0.5.0] - 2026-09-08
 
 Second security release of the day, and it reaches two audiences only: installs that copied the
@@ -336,6 +468,7 @@ the global and the custom-CSS filter, and finally renders the login-page fields.
 - Nav link in admin sidebar
 - Server-side rendering (no client-side flicker)
 
+[0.6.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.2.2...v0.3.0

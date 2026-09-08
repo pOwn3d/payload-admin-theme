@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react'
+import { AdminThemeErrorBoundary } from './ErrorBoundary.js'
 import { generateThemeCSS } from '../utils/cssVariables.js'
 import { getPresetColors } from '../utils/presets.js'
 import { fetchTheme } from '../utils/themeCache.js'
@@ -35,8 +36,13 @@ function resolveColors(theme: AdminThemeData) {
  * - Dark mode color overrides via [data-theme="dark"] selector
  * - Custom CSS injection
  * - Favicon and brand name customization
+ *
+ * The exported symbol is the boundary-wrapped wrapper below, not this
+ * component: Payload mounts it from the import map into `afterNavLinks`, which
+ * renders on EVERY admin page, so the plugin cannot place an ancestor around
+ * it. See ErrorBoundary.tsx.
  */
-export const ThemeInjectorClient: React.FC<{ globalSlug?: string }> = ({
+const ThemeInjectorClientInner: React.FC<{ globalSlug?: string }> = ({
   globalSlug,
 }) => {
   const [theme, setTheme] = useState<AdminThemeData | null>(null)
@@ -148,3 +154,15 @@ export const ThemeInjectorClient: React.FC<{ globalSlug?: string }> = ({
 
   return null
 }
+
+export const ThemeInjectorClient: React.FC<{ globalSlug?: string }> = (props) => (
+  // `fallback={null}`: this component renders nothing anyway, and an error
+  // panel wedged into the sidebar of every admin page would be worse than an
+  // unthemed admin.
+  <AdminThemeErrorBoundary
+    fallback={null}
+    slotName="afterNavLinks (ThemeInjectorClient)"
+  >
+    <ThemeInjectorClientInner {...props} />
+  </AdminThemeErrorBoundary>
+)
