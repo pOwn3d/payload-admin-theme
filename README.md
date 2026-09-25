@@ -571,4 +571,4 @@ Bugs and feature requests: [github.com/pOwn3d/payload-admin-theme/issues](https:
 
 ## License
 
-MIT — [ConsilioWEB](https://consilioweb.fr)
+MIT — [ConsilioWEB](https://consilioweb.fr/services/developpement-web/payload-cms)
