@@ -5,6 +5,28 @@ All notable changes to `@consilioweb/payload-admin-theme` will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] - 2026-09-29
+
+Maintenance release. No change to the plugin's runtime code, options or schema: nothing to migrate.
+
+### Changed
+
+- **The README credit links to the page about Payload CMS development.** It pointed to the root
+  of consilioweb.fr; it now points to https://consilioweb.fr/services/developpement-web/payload-cms,
+  the subject of this package.
+- **The build fails on an unresolved relative import in `dist/`.** `scripts/verify-dist-imports.mjs`
+  runs after tsup and stops the build when a relative import in `dist/` targets a file that was
+  never emitted, the defect that made `payload-admin-ui-pro` 0.5.0–0.7.0 and `payload-support`
+  5.0.0–6.0.0 unbuildable in a host application. This package was not affected; the check keeps it
+  that way.
+- The published package now includes `scripts/`, like the other plugins.
+
+### Development
+
+- Dependabot opens security updates only; routine version bumps are off.
+- pnpm overrides in `pnpm-workspace.yaml` force the patched versions of transitive toolchain
+  dependencies (sass, vitest and the like). None of them reaches a consumer.
+
 ## [0.6.0] - 2026-09-08
 
 Not a security release: nothing here is exploitable, no advisory is involved, and if you took 0.5.0
@@ -468,6 +490,7 @@ the global and the custom-CSS filter, and finally renders the login-page fields.
 - Nav link in admin sidebar
 - Server-side rendering (no client-side flicker)
 
+[0.6.1]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/pOwn3d/payload-admin-theme/compare/v0.3.0...v0.4.0
